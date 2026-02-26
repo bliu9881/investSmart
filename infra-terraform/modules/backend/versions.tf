@@ -1,5 +1,5 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: MIT-0
+# SPDX-License-Identifier: Apache-2.0
 
 terraform {
   required_version = ">= 1.5.0"
@@ -12,6 +12,14 @@ terraform {
     archive = {
       source  = "hashicorp/archive"
       version = ">= 2.4.0"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = ">= 3.2.0"
+    }
+    time = {
+      source  = "hashicorp/time"
+      version = ">= 0.9.0"
     }
   }
 }

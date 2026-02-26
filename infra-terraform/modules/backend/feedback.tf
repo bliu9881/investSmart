@@ -1,28 +1,14 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: MIT-0
+# SPDX-License-Identifier: Apache-2.0
 
 # =============================================================================
-# Data Sources
+# Feedback API
+# Maps to: backend-stack.ts createFeedbackApi() + createFeedbackTable()
 # =============================================================================
 
-data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
-
-# =============================================================================
-# Local Values
-# =============================================================================
-
-locals {
-  account_id = data.aws_caller_identity.current.account_id
-  region     = data.aws_region.current.id
-
-  # Lambda source path (default to infra-terraform/lambdas/feedback)
-  lambda_source_path = var.lambda_source_path != null ? var.lambda_source_path : "${path.module}/../../lambdas/feedback"
-}
-
-# =============================================================================
+# -----------------------------------------------------------------------------
 # DynamoDB Table for Feedback Storage
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 resource "aws_dynamodb_table" "feedback" {
   name         = "${var.stack_name_base}-feedback"
@@ -68,22 +54,22 @@ resource "aws_dynamodb_table" "feedback" {
   tags = var.tags
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # CloudWatch Log Group for Lambda
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 resource "aws_cloudwatch_log_group" "feedback_lambda" {
   name              = "/aws/lambda/${var.stack_name_base}-feedback"
-  retention_in_days = var.log_retention_days
+  retention_in_days = local.log_retention_days
 
   tags = var.tags
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # IAM Role for Lambda Function
-# =============================================================================
+# -----------------------------------------------------------------------------
 
-data "aws_iam_policy_document" "lambda_assume_role" {
+data "aws_iam_policy_document" "feedback_lambda_assume_role" {
   statement {
     effect  = "Allow"
     actions = ["sts:AssumeRole"]
@@ -97,13 +83,12 @@ data "aws_iam_policy_document" "lambda_assume_role" {
 
 resource "aws_iam_role" "feedback_lambda" {
   name               = "${var.stack_name_base}-feedback-lambda-role"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  assume_role_policy = data.aws_iam_policy_document.feedback_lambda_assume_role.json
   description        = "Execution role for feedback Lambda function"
 
   tags = var.tags
 }
 
-# Lambda execution policy
 data "aws_iam_policy_document" "feedback_lambda_policy" {
   # CloudWatch Logs
   statement {
@@ -139,16 +124,38 @@ resource "aws_iam_role_policy" "feedback_lambda" {
   policy = data.aws_iam_policy_document.feedback_lambda_policy.json
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Lambda Function for Feedback API
-# =============================================================================
+# -----------------------------------------------------------------------------
 
-# Create zip archive from source
+# Build lambda package with dependencies (pip install from requirements.txt)
+resource "null_resource" "feedback_lambda_build" {
+  triggers = {
+    source_hash       = sha256(join("", [for f in fileset(local.feedback_lambda_source_path, "*.py") : filesha256("${local.feedback_lambda_source_path}/${f}")]))
+    requirements_hash = fileexists("${local.feedback_lambda_source_path}/requirements.txt") ? filesha256("${local.feedback_lambda_source_path}/requirements.txt") : ""
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -e
+      BUILD_DIR="${path.module}/artifacts/feedback_lambda_build"
+      rm -rf "$BUILD_DIR"
+      mkdir -p "$BUILD_DIR"
+      cp ${local.feedback_lambda_source_path}/*.py "$BUILD_DIR/"
+      if [ -f "${local.feedback_lambda_source_path}/requirements.txt" ]; then
+        python3 -m pip install -r "${local.feedback_lambda_source_path}/requirements.txt" -t "$BUILD_DIR/" --quiet --upgrade
+      fi
+    EOT
+  }
+}
+
 data "archive_file" "feedback_lambda" {
   type        = "zip"
-  source_dir  = local.lambda_source_path
-  output_path = "${path.module}/feedback_lambda.zip"
-  excludes    = ["requirements.txt", "__pycache__", "*.pyc"]
+  source_dir  = "${path.module}/artifacts/feedback_lambda_build"
+  output_path = "${path.module}/artifacts/feedback_lambda.zip"
+  excludes    = ["__pycache__", "*.pyc", "*.dist-info"]
+
+  depends_on = [null_resource.feedback_lambda_build]
 }
 
 resource "aws_lambda_function" "feedback" {
@@ -163,7 +170,7 @@ resource "aws_lambda_function" "feedback" {
   source_code_hash = data.archive_file.feedback_lambda.output_base64sha256
 
   # Lambda Powertools layer
-  layers = [var.powertools_layer_arn]
+  layers = [local.powertools_layer_arn]
 
   # Environment variables
   environment {
@@ -178,9 +185,9 @@ resource "aws_lambda_function" "feedback" {
   tags = var.tags
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # API Gateway REST API
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 resource "aws_api_gateway_rest_api" "feedback" {
   name        = "${var.stack_name_base}-feedback-api"
@@ -193,9 +200,9 @@ resource "aws_api_gateway_rest_api" "feedback" {
   tags = var.tags
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Cognito Authorizer
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 resource "aws_api_gateway_authorizer" "cognito" {
   name                             = "${var.stack_name_base}-cognito-authorizer"
@@ -203,12 +210,12 @@ resource "aws_api_gateway_authorizer" "cognito" {
   type                             = "COGNITO_USER_POOLS"
   provider_arns                    = [var.user_pool_arn]
   identity_source                  = "method.request.header.Authorization"
-  authorizer_result_ttl_in_seconds = var.cache_ttl_seconds
+  authorizer_result_ttl_in_seconds = local.api_cache_ttl_seconds
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # API Gateway Resources
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 # /feedback resource
 resource "aws_api_gateway_resource" "feedback" {
@@ -217,9 +224,9 @@ resource "aws_api_gateway_resource" "feedback" {
   path_part   = "feedback"
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # API Gateway Methods
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 # POST /feedback
 resource "aws_api_gateway_method" "post_feedback" {
@@ -238,9 +245,9 @@ resource "aws_api_gateway_method" "options_feedback" {
   authorization = "NONE"
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # API Gateway Integrations
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 # POST /feedback -> Lambda
 resource "aws_api_gateway_integration" "post_feedback" {
@@ -296,11 +303,11 @@ resource "aws_api_gateway_integration_response" "options_feedback" {
   depends_on = [aws_api_gateway_integration.options_feedback]
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Lambda Permission for API Gateway
-# =============================================================================
+# -----------------------------------------------------------------------------
 
-resource "aws_lambda_permission" "api_gateway" {
+resource "aws_lambda_permission" "feedback_api_gateway" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.feedback.function_name
@@ -308,9 +315,9 @@ resource "aws_lambda_permission" "api_gateway" {
   source_arn    = "${aws_api_gateway_rest_api.feedback.execution_arn}/*/*"
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # API Gateway Deployment
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 resource "aws_api_gateway_deployment" "feedback" {
   rest_api_id = aws_api_gateway_rest_api.feedback.id
@@ -366,14 +373,14 @@ resource "aws_api_gateway_stage" "prod" {
 # CloudWatch Log Group for API Gateway access logs
 resource "aws_cloudwatch_log_group" "api_gateway_access" {
   name              = "/aws/apigateway/${var.stack_name_base}-feedback-api/access-logs"
-  retention_in_days = var.log_retention_days
+  retention_in_days = local.log_retention_days
 
   tags = var.tags
 }
 
-# =============================================================================
-# API Gateway Method Settings (throttling)
-# =============================================================================
+# -----------------------------------------------------------------------------
+# API Gateway Method Settings (throttling + caching)
+# -----------------------------------------------------------------------------
 
 resource "aws_api_gateway_method_settings" "all" {
   rest_api_id = aws_api_gateway_rest_api.feedback.id
@@ -381,8 +388,10 @@ resource "aws_api_gateway_method_settings" "all" {
   method_path = "*/*"
 
   settings {
-    throttling_rate_limit  = var.throttling_rate_limit
-    throttling_burst_limit = var.throttling_burst_limit
+    throttling_rate_limit  = local.api_throttling_rate_limit
+    throttling_burst_limit = local.api_throttling_burst_limit
+    caching_enabled        = true
+    cache_ttl_in_seconds   = local.api_cache_ttl_seconds
     logging_level          = "INFO"
     metrics_enabled        = true
     data_trace_enabled     = false

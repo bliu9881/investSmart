@@ -1,5 +1,5 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: MIT-0
+# SPDX-License-Identifier: Apache-2.0
 
 # =============================================================================
 # User Pool Outputs
@@ -30,21 +30,6 @@ output "web_client_id" {
 }
 
 # =============================================================================
-# Machine Client Outputs
-# =============================================================================
-
-output "machine_client_id" {
-  description = "Cognito Machine Client ID (for M2M authentication)"
-  value       = aws_cognito_user_pool_client.machine.id
-}
-
-output "machine_client_secret" {
-  description = "Cognito Machine Client Secret (for M2M authentication)"
-  value       = aws_cognito_user_pool_client.machine.client_secret
-  sensitive   = true
-}
-
-# =============================================================================
 # Domain Outputs
 # =============================================================================
 
@@ -61,15 +46,6 @@ output "cognito_domain_url" {
 output "hosted_ui_url" {
   description = "Cognito hosted UI login URL"
   value       = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${local.region}.amazoncognito.com/login?client_id=${aws_cognito_user_pool_client.web.id}&response_type=code&redirect_uri=${urlencode(local.all_callback_urls[0])}"
-}
-
-# =============================================================================
-# Resource Server Outputs
-# =============================================================================
-
-output "resource_server_identifier" {
-  description = "Cognito Resource Server identifier"
-  value       = aws_cognito_resource_server.gateway.identifier
 }
 
 # =============================================================================

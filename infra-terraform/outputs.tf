@@ -1,5 +1,5 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: MIT-0
+# SPDX-License-Identifier: Apache-2.0
 
 # =============================================================================
 # Cognito Outputs
@@ -22,7 +22,7 @@ output "cognito_web_client_id" {
 
 output "cognito_machine_client_id" {
   description = "Cognito Machine Client ID (for M2M authentication)"
-  value       = module.cognito.machine_client_id
+  value       = module.backend.machine_client_id
 }
 
 output "cognito_domain_url" {
@@ -60,12 +60,12 @@ output "amplify_staging_bucket" {
 
 output "memory_id" {
   description = "AgentCore Memory ID"
-  value       = module.agentcore_memory.memory_id
+  value       = module.backend.memory_id
 }
 
 output "memory_arn" {
   description = "AgentCore Memory ARN"
-  value       = module.agentcore_memory.memory_arn
+  value       = module.backend.memory_arn
 }
 
 # =============================================================================
@@ -74,27 +74,27 @@ output "memory_arn" {
 
 output "gateway_id" {
   description = "AgentCore Gateway ID"
-  value       = module.agentcore_gateway.gateway_id
+  value       = module.backend.gateway_id
 }
 
 output "gateway_arn" {
   description = "AgentCore Gateway ARN"
-  value       = module.agentcore_gateway.gateway_arn
+  value       = module.backend.gateway_arn
 }
 
 output "gateway_url" {
   description = "AgentCore Gateway URL"
-  value       = module.agentcore_gateway.gateway_url
+  value       = module.backend.gateway_url
 }
 
 output "gateway_target_id" {
   description = "AgentCore Gateway Target ID"
-  value       = module.agentcore_gateway.gateway_target_id
+  value       = module.backend.gateway_target_id
 }
 
 output "tool_lambda_arn" {
   description = "Sample tool Lambda function ARN"
-  value       = module.agentcore_gateway.tool_lambda_arn
+  value       = module.backend.tool_lambda_arn
 }
 
 # =============================================================================
@@ -103,22 +103,32 @@ output "tool_lambda_arn" {
 
 output "runtime_id" {
   description = "AgentCore Runtime ID"
-  value       = module.agentcore_runtime.runtime_id
+  value       = module.backend.runtime_id
 }
 
 output "runtime_arn" {
   description = "AgentCore Runtime ARN"
-  value       = module.agentcore_runtime.runtime_arn
+  value       = module.backend.runtime_arn
 }
 
 output "runtime_role_arn" {
   description = "AgentCore Runtime execution role ARN"
-  value       = module.agentcore_runtime.role_arn
+  value       = module.backend.runtime_role_arn
 }
 
 output "ecr_repository_url" {
-  description = "ECR repository URL for agent container"
-  value       = module.agentcore_runtime.ecr_repository_url
+  description = "ECR repository URL for agent container (docker mode only)"
+  value       = module.backend.ecr_repository_url
+}
+
+output "agent_code_bucket" {
+  description = "S3 bucket for agent code packages (zip mode only)"
+  value       = module.backend.agent_code_bucket
+}
+
+output "deployment_type" {
+  description = "Deployment type used (docker or zip)"
+  value       = module.backend.deployment_type
 }
 
 # =============================================================================
@@ -127,22 +137,22 @@ output "ecr_repository_url" {
 
 output "feedback_api_url" {
   description = "Feedback API Gateway URL"
-  value       = module.feedback_api.api_url
+  value       = module.backend.feedback_api_url
 }
 
 output "feedback_api_id" {
   description = "Feedback API Gateway ID"
-  value       = module.feedback_api.api_id
+  value       = module.backend.feedback_api_id
 }
 
 output "feedback_table_name" {
   description = "Feedback DynamoDB table name"
-  value       = module.feedback_api.dynamodb_table_name
+  value       = module.backend.feedback_table_name
 }
 
 output "feedback_lambda_arn" {
   description = "Feedback Lambda function ARN"
-  value       = module.feedback_api.lambda_function_arn
+  value       = module.backend.feedback_lambda_arn
 }
 
 # =============================================================================
@@ -161,13 +171,14 @@ output "ssm_parameter_prefix" {
 output "deployment_summary" {
   description = "Summary of deployed resources"
   value = {
-    stack_name    = var.stack_name_base
-    region        = local.region
-    account_id    = local.account_id
-    environment   = var.environment
-    frontend_url  = module.amplify_hosting.app_url
-    gateway_url   = module.agentcore_gateway.gateway_url
-    api_url       = module.feedback_api.api_url
-    cognito_login = module.cognito.hosted_ui_url
+    stack_name      = var.stack_name_base
+    region          = local.region
+    account_id      = local.account_id
+    environment     = var.environment
+    deployment_type = var.deployment_type
+    frontend_url    = module.amplify_hosting.app_url
+    gateway_url     = module.backend.gateway_url
+    api_url         = module.backend.feedback_api_url
+    cognito_login   = module.cognito.hosted_ui_url
   }
 }

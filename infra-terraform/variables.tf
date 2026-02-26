@@ -1,5 +1,5 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: MIT-0
+# SPDX-License-Identifier: Apache-2.0
 
 # =============================================================================
 # Required Variables
@@ -10,8 +10,8 @@ variable "stack_name_base" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-zA-Z][a-zA-Z0-9-]{2,62}$", var.stack_name_base))
-    error_message = "Stack name must start with a letter, be 3-63 characters, and contain only alphanumeric characters and hyphens."
+    condition     = can(regex("^[a-z][a-z0-9-]{2,62}$", var.stack_name_base))
+    error_message = "Stack name must start with a lowercase letter, be 3-63 characters, and contain only lowercase alphanumeric characters and hyphens."
   }
 }
 
@@ -53,6 +53,17 @@ variable "backend_pattern" {
   validation {
     condition     = contains(["strands-single-agent", "langgraph-single-agent"], var.backend_pattern)
     error_message = "Backend pattern must be one of: strands-single-agent, langgraph-single-agent."
+  }
+}
+
+variable "deployment_type" {
+  description = "Deployment type for AgentCore Runtime. 'docker' uses ECR container image (requires Docker + separate build step). 'zip' uses S3 Python package (no Docker required, single-step deploy)."
+  type        = string
+  default     = "docker"
+
+  validation {
+    condition     = contains(["docker", "zip"], var.deployment_type)
+    error_message = "Deployment type must be 'docker' or 'zip'."
   }
 }
 

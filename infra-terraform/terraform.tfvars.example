@@ -1,5 +1,5 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: MIT-0
+# SPDX-License-Identifier: Apache-2.0
 
 # =============================================================================
 # Terraform Configuration Example
@@ -12,7 +12,7 @@
 # -----------------------------------------------------------------------------
 
 # Base name for all resources
-stack_name_base = "FAST-Demo-stack"
+stack_name_base = "fast-demo-stack"
 
 # AWS region for deployment
 aws_region = "us-east-1"
@@ -32,6 +32,13 @@ admin_user_email = null  # Example: "admin@example.com"
 # Agent pattern to deploy
 # Available patterns: strands-single-agent, langgraph-single-agent
 backend_pattern = "strands-single-agent"
+
+# Deployment type for AgentCore Runtime
+# "docker" - Container image via ECR (requires Docker + separate build step)
+#   Deployment: terraform apply → ./scripts/build-and-push-image.sh → terraform apply
+# "zip" - Python package via S3 (no Docker required, single-step deploy)
+#   Deployment: terraform apply (packages and deploys automatically)
+deployment_type = "docker"
 
 # Name for the agent runtime
 agent_name = "StrandsAgent"

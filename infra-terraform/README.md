@@ -6,20 +6,38 @@ This directory contains Terraform configurations for deploying the Fullstack Age
 
 ## Architecture
 
-The infrastructure deploys the following AWS resources:
+The infrastructure is organized into 3 Terraform modules, mirroring the CDK stack structure:
 
-1. **Amplify Hosting** - Frontend React/Next.js application hosting
-2. **Cognito** - User authentication with User Pool, Web Client, and Machine Client (M2M)
-3. **AgentCore Memory** - Persistent memory for AI agent conversations
-4. **AgentCore Gateway** - MCP gateway with Lambda tool targets
-5. **AgentCore Runtime** - Containerized agent runtime with ECR repository
-6. **Feedback API** - API Gateway + Lambda + DynamoDB for user feedback
+1. **Amplify Hosting** (`modules/amplify-hosting/`) - S3 staging buckets and frontend app hosting
+2. **Cognito** (`modules/cognito/`) - User Pool, web client, domain, and admin user
+3. **Backend** (`modules/backend/`) - All AgentCore and API resources:
+   - AgentCore Memory - Persistent memory for agent conversations
+   - M2M Authentication - Cognito resource server and machine client
+   - AgentCore Gateway - MCP gateway with Lambda tool targets
+   - AgentCore Runtime - ECR repository and containerized agent runtime
+   - Feedback API - API Gateway + Lambda + DynamoDB
+   - SSM Parameters and Secrets Manager
 
 ## Prerequisites
 
 1. **Terraform** >= 1.5.0
 2. **AWS CLI** configured with appropriate credentials
-3. **Docker** (for building agent container images)
+3. **Docker** (only required for `deployment_type = "docker"`)
+
+## Deployment Types
+
+FAST supports two deployment types for the AgentCore Runtime:
+
+| | Docker (default) | Zip |
+|---|---|---|
+| **How it works** | Builds a Docker container image and pushes to ECR | Packages Python code + ARM64 wheels via Lambda and uploads to S3 |
+| **Requires Docker** | Yes | No |
+| **Best for** | Custom runtime images, complex dependencies | Quick deployment, CI/CD, environments without Docker |
+
+Set `deployment_type` in your `terraform.tfvars`:
+```hcl
+deployment_type = "docker"  # or "zip"
+```
 
 ## Quick Start
 
@@ -35,53 +53,24 @@ cp terraform.tfvars.example terraform.tfvars
 
 # Initialize Terraform
 terraform init
-
-# Deploy infrastructure (Step 1 of 3)
-terraform apply
-
-# Build and push Docker image (Step 2 of 3)
-./scripts/build-and-push-image.sh
-
-# Deploy AgentCore Runtime (Step 3 of 3)
-terraform apply
 ```
 
-## Deployment Workflow
-
-Terraform requires a **3-step deployment process** because the AgentCore Runtime needs the Docker image to exist in ECR before it can be created.
-
-> **Why 3 steps instead of a single command?** The Docker image build is kept separate to provide better error handling, faster iteration during development, and CI/CD flexibility. While Terraform's `local-exec` provisioner could consolidate this, it adds complexity and makes build failures harder to diagnose.
-
-### Step 1: Create Infrastructure (ECR, Cognito, Memory, Gateway, etc.)
-
-**Optional:** Validate and preview changes:
-```bash
-terraform fmt       # Format .tf files
-terraform validate  # Check configuration syntax
-terraform plan      # Preview what will be created
-```
-
-Deploy:
+### Deploy
 ```bash
 terraform apply
 ```
 
-> ⚠️ **Expected Error:** This step will fail with an error like:
-> ```
-> Error: creating Bedrock AgentCore Agent Runtime
-> ValidationException: The specified image identifier does not exist in the repository
-> ```
-> **This is expected!** The AgentCore Runtime cannot be created until the Docker image exists in ECR. All other resources (ECR, Cognito, Memory, Gateway, etc.) are created successfully. Continue to Step 2 to build and push the image.
+- **Docker mode** (default): Builds an ARM64 Docker image, pushes to ECR, and creates the runtime. Requires Docker to be running locally.
+- **Zip mode**: Deploys a packager Lambda that bundles your agent code with ARM64 wheels, uploads to S3, and creates the runtime. No Docker required.
 
-### Step 2: Build and Push Docker Image
+> **Note:** If you provide a pre-built image via `container_uri`, Terraform skips the build and uses your image directly.
+
+### Manual Docker Build (Optional)
+
+If you prefer to build the Docker image separately (e.g., in CI/CD), you can use the build script:
 ```bash
 ./scripts/build-and-push-image.sh
 ```
-This script:
-- Reads configuration from `terraform.tfvars`
-- Logs into ECR
-- Builds the agent Docker image with ARM64 architecture (required by AgentCore)
-- Pushes to ECR
 
 **Options:**
 ```bash
@@ -89,12 +78,6 @@ This script:
 ./scripts/build-and-push-image.sh -p langgraph-single-agent   # Use LangGraph pattern
 ./scripts/build-and-push-image.sh -s my-stack -r us-west-2    # Override stack/region
 ```
-
-### Step 3: Create AgentCore Runtime
-```bash
-terraform apply
-```
-Now that the image exists in ECR, Terraform creates the AgentCore Runtime.
 
 ### (Optional) Verify Deployment
 ```bash
@@ -116,6 +99,7 @@ terraform output deployment_summary
 |----------|-------------|---------|
 | `admin_user_email` | Email for Cognito admin user | `null` |
 | `backend_pattern` | Agent pattern to deploy | `"strands-single-agent"` |
+| `deployment_type` | `"docker"` (ECR container) or `"zip"` (S3 package) | `"docker"` |
 | `agent_name` | Name for the agent runtime | `"StrandsAgent"` |
 | `network_mode` | Network mode (PUBLIC/PRIVATE) | `"PUBLIC"` |
 | `environment` | Environment name for tagging | `"dev"` |
@@ -144,22 +128,33 @@ infra-terraform/
 ├── terraform.tfvars.example   # Example variable file
 ├── backend.tf.example         # Example S3 backend configuration
 ├── README.md                  # This file
-├── scripts/                   # Terraform deployment scripts (not project root scripts/)
-│   ├── build-and-push-image.sh   # Build and push Docker image to ECR
-│   ├── deploy-frontend.py        # Deploy frontend (Python, cross-platform)
-│   ├── deploy-frontend.sh        # Deploy frontend (Shell, macOS/Linux)
-│   └── test-agent.py             # Test deployed agent
-├── lambdas/                   # Lambda source code
-│   ├── feedback/              # Feedback API Lambda
-│   └── gateway-tools/         # Gateway tool Lambda
+├── lambdas/
+│   └── zip-packager/              # Lambda for packaging agent code (zip mode)
+│       └── index.py
+├── scripts/
+│   ├── build-and-push-image.sh    # Build and push Docker image to ECR
+│   ├── deploy-frontend.py         # Deploy frontend (Python, cross-platform)
+│   ├── deploy-frontend.sh         # Deploy frontend (Shell, macOS/Linux)
+│   └── test-agent.py              # Test deployed agent
 └── modules/
     ├── amplify-hosting/       # S3 staging buckets and Amplify app
-    ├── cognito/               # User Pool, clients, and authentication
-    ├── agentcore-memory/      # Memory resource for agent conversations
-    ├── agentcore-gateway/     # Gateway with Lambda tool targets
-    ├── agentcore-runtime/     # ECR repository and agent runtime
-    └── feedback-api/          # API Gateway, Lambda, and DynamoDB
+    ├── cognito/               # User Pool, web client, domain, admin user
+    └── backend/               # All AgentCore + Feedback resources
+        ├── versions.tf
+        ├── locals.tf          # Shared data sources, naming, paths
+        ├── variables.tf       # Consolidated inputs from root
+        ├── outputs.tf
+        ├── artifacts/         # Build artifacts (.gitignored)
+        ├── memory.tf          # AgentCore Memory + IAM
+        ├── auth.tf            # M2M resource server + machine client
+        ├── gateway.tf         # Gateway + Lambda tool target
+        ├── runtime.tf         # ECR/S3 + Agent Runtime (conditional)
+        ├── zip_packager.tf    # S3 + Lambda packager (zip mode only)
+        ├── feedback.tf        # DynamoDB + Lambda + API Gateway
+        └── ssm.tf             # SSM parameters + Secrets Manager
 ```
+
+> **Note:** Feedback Lambda source code is shared from `infra-cdk/lambdas/feedback/`. The zip-packager Lambda is Terraform-specific and lives under `infra-terraform/lambdas/`.
 
 ## Deployment Order
 
@@ -167,10 +162,7 @@ The modules are deployed in this order:
 
 1. **Amplify Hosting** - First, to get predictable app URL
 2. **Cognito** - Uses Amplify URL for OAuth callback URLs
-3. **AgentCore Memory** - Independent, can deploy in parallel
-4. **AgentCore Gateway** - Depends on Cognito for JWT authentication
-5. **AgentCore Runtime** - Depends on Cognito and Memory
-6. **Feedback API** - Depends on Cognito and Amplify URL for CORS
+3. **Backend** - Depends on Cognito and Amplify URL; internally creates Memory, Auth, Gateway, Runtime, Feedback API, and SSM resources with correct dependency ordering
 
 ## Post-Deployment Steps
 
@@ -231,7 +223,9 @@ terraform output
 | `runtime_arn` | AgentCore Runtime ARN |
 | `memory_arn` | AgentCore Memory ARN |
 | `feedback_api_url` | Feedback API endpoint |
-| `ecr_repository_url` | ECR repository for agent container |
+| `ecr_repository_url` | ECR repository for agent container (docker mode) |
+| `agent_code_bucket` | S3 bucket for agent code (zip mode) |
+| `deployment_type` | Deployment type used (docker or zip) |
 | `deployment_summary` | Combined summary of all resources |
 
 ## State Management

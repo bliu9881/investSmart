@@ -1,14 +1,15 @@
 #!/bin/bash
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: MIT-0
+# SPDX-License-Identifier: Apache-2.0
 
 # =============================================================================
 # Build and Push Docker Image to ECR for AgentCore Runtime
 # =============================================================================
 #
-# This script builds the agent Docker image and pushes it to ECR.
-# It must be run AFTER terraform apply creates the ECR repository,
-# but BEFORE the AgentCore Runtime can be created.
+# NOTE: This script is OPTIONAL. Running `terraform apply` with docker mode
+# automatically builds and pushes the image. Use this script only if you
+# prefer to build separately (e.g., in CI/CD pipelines) or need to rebuild
+# the image without a full terraform apply.
 #
 # Usage:
 #   ./scripts/build-and-push-image.sh [options]
@@ -88,12 +89,28 @@ if [[ -z "$STACK_NAME" || -z "$REGION" ]]; then
         echo -e "${BLUE}Reading configuration from terraform.tfvars...${NC}"
         
         if [[ -z "$STACK_NAME" ]]; then
-            STACK_NAME=$(grep -E '^stack_name_base\s*=' "$TFVARS_FILE" | sed -E 's/.*=\s*"([^"]+)".*/\1/')
+            STACK_NAME=$(grep -E '^stack_name_base\s*=' "$TFVARS_FILE" | awk -F'"' '{print $2}')
         fi
         
         if [[ -z "$REGION" ]]; then
-            REGION=$(grep -E '^aws_region\s*=' "$TFVARS_FILE" | sed -E 's/.*=\s*"([^"]+)".*/\1/')
+            REGION=$(grep -E '^aws_region\s*=' "$TFVARS_FILE" | awk -F'"' '{print $2}')
         fi
+    fi
+fi
+
+# Check deployment type - this script is for docker mode only
+TFVARS_FILE="$TERRAFORM_DIR/terraform.tfvars"
+if [[ -f "$TFVARS_FILE" ]]; then
+    DEPLOYMENT_TYPE=$(grep -E '^deployment_type\s*=' "$TFVARS_FILE" | awk -F'"' '{print $2}')
+    if [[ "$DEPLOYMENT_TYPE" == "zip" ]]; then
+        echo -e "${YELLOW}========================================${NC}"
+        echo -e "${YELLOW}  deployment_type is set to 'zip'      ${NC}"
+        echo -e "${YELLOW}========================================${NC}"
+        echo ""
+        echo -e "This script is only needed for ${GREEN}docker${NC} deployment mode."
+        echo -e "With ${GREEN}zip${NC} mode, agent code is packaged automatically during ${BLUE}terraform apply${NC}."
+        echo ""
+        exit 0
     fi
 fi
 

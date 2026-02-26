@@ -1,5 +1,5 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: MIT-0
+# SPDX-License-Identifier: Apache-2.0
 
 # =============================================================================
 # Data Sources
@@ -24,7 +24,7 @@ locals {
 # =============================================================================
 
 resource "aws_s3_bucket" "access_logs" {
-  bucket_prefix = "${var.stack_name_base}-access-logs-"
+  bucket_prefix = "${lower(var.stack_name_base)}-access-logs-"
   force_destroy = true
 
   tags = var.tags
@@ -57,7 +57,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
 # =============================================================================
 
 resource "aws_s3_bucket" "staging" {
-  bucket_prefix = "${var.stack_name_base}-staging-"
+  bucket_prefix = "${lower(var.stack_name_base)}-staging-"
   force_destroy = true
 
   tags = var.tags

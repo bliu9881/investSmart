@@ -1,47 +1,27 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: MIT-0
+# SPDX-License-Identifier: Apache-2.0
 
 # =============================================================================
-# Data Sources
+# AgentCore Gateway
+# Maps to: backend-stack.ts createAgentCoreGateway()
 # =============================================================================
 
-data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
-
-# =============================================================================
-# Local Values
-# =============================================================================
-
-locals {
-  account_id = data.aws_caller_identity.current.account_id
-  region     = data.aws_region.current.id
-
-  # Lambda source path (default to gateway/tools/sample_tool relative to repo root)
-  lambda_source_path = var.lambda_source_path != null ? var.lambda_source_path : "${path.module}/../../../gateway/tools/sample_tool"
-
-  # Tool spec path
-  tool_spec_path = var.tool_spec_path != null ? var.tool_spec_path : "${path.module}/../../../gateway/tools/sample_tool/tool_spec.json"
-
-  # OIDC discovery URL for Cognito JWT authorizer
-  oidc_discovery_url = "https://cognito-idp.${local.region}.amazonaws.com/${var.user_pool_id}/.well-known/openid-configuration"
-}
-
-# =============================================================================
+# -----------------------------------------------------------------------------
 # CloudWatch Log Group for Lambda
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 resource "aws_cloudwatch_log_group" "tool_lambda" {
   name              = "/aws/lambda/${var.stack_name_base}-sample-tool"
-  retention_in_days = var.log_retention_days
+  retention_in_days = local.log_retention_days
 
   tags = var.tags
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # IAM Role for Lambda Function
-# =============================================================================
+# -----------------------------------------------------------------------------
 
-data "aws_iam_policy_document" "lambda_assume_role" {
+data "aws_iam_policy_document" "tool_lambda_assume_role" {
   statement {
     effect  = "Allow"
     actions = ["sts:AssumeRole"]
@@ -55,14 +35,13 @@ data "aws_iam_policy_document" "lambda_assume_role" {
 
 resource "aws_iam_role" "tool_lambda" {
   name               = "${var.stack_name_base}-sample-tool-lambda-role"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  assume_role_policy = data.aws_iam_policy_document.tool_lambda_assume_role.json
   description        = "Execution role for sample tool Lambda"
 
   tags = var.tags
 }
 
-# Lambda basic execution policy (CloudWatch Logs)
-data "aws_iam_policy_document" "lambda_policy" {
+data "aws_iam_policy_document" "tool_lambda_policy" {
   statement {
     effect = "Allow"
     actions = [
@@ -76,18 +55,17 @@ data "aws_iam_policy_document" "lambda_policy" {
 resource "aws_iam_role_policy" "tool_lambda" {
   name   = "${var.stack_name_base}-sample-tool-lambda-policy"
   role   = aws_iam_role.tool_lambda.id
-  policy = data.aws_iam_policy_document.lambda_policy.json
+  policy = data.aws_iam_policy_document.tool_lambda_policy.json
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # Lambda Function for Sample Tool
-# =============================================================================
+# -----------------------------------------------------------------------------
 
-# Create zip archive from source
 data "archive_file" "tool_lambda" {
   type        = "zip"
-  source_dir  = local.lambda_source_path
-  output_path = "${path.module}/lambda_package.zip"
+  source_dir  = local.gateway_lambda_source_path
+  output_path = "${path.module}/artifacts/gateway_lambda.zip"
   excludes    = ["tool_spec.json", "__pycache__", "*.pyc"]
 }
 
@@ -106,9 +84,9 @@ resource "aws_lambda_function" "sample_tool" {
   tags = var.tags
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # IAM Role for Gateway
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 data "aws_iam_policy_document" "gateway_assume_role" {
   statement {
@@ -125,24 +103,25 @@ data "aws_iam_policy_document" "gateway_assume_role" {
 resource "aws_iam_role" "gateway" {
   name               = "${var.stack_name_base}-gateway-role"
   assume_role_policy = data.aws_iam_policy_document.gateway_assume_role.json
-  description        = "Role for AgentCore Gateway with comprehensive permissions"
+  description        = "Role for AgentCore Gateway"
 
   tags = var.tags
 }
 
-# Gateway IAM policy
 data "aws_iam_policy_document" "gateway_policy" {
   # Lambda invoke permission
   statement {
-    sid       = "LambdaInvoke"
-    effect    = "Allow"
-    actions   = ["lambda:InvokeFunction"]
+    sid    = "LambdaInvoke"
+    effect = "Allow"
+    actions = [
+      "lambda:InvokeFunction"
+    ]
     resources = [aws_lambda_function.sample_tool.arn]
   }
 
   # Bedrock permissions (region-agnostic)
   statement {
-    sid    = "BedrockModelInvocation"
+    sid    = "BedrockInvoke"
     effect = "Allow"
     actions = [
       "bedrock:InvokeModel",
@@ -156,7 +135,7 @@ data "aws_iam_policy_document" "gateway_policy" {
 
   # SSM parameter access
   statement {
-    sid    = "SSMParameterAccess"
+    sid    = "SSMAccess"
     effect = "Allow"
     actions = [
       "ssm:GetParameter",
@@ -195,9 +174,20 @@ resource "aws_iam_role_policy" "gateway" {
   policy = data.aws_iam_policy_document.gateway_policy.json
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
+# IAM propagation delay
+# BUG-003: Gateway Target creation can fail due to IAM role propagation delay
+# -----------------------------------------------------------------------------
+
+resource "time_sleep" "gateway_iam_propagation" {
+  create_duration = "10s"
+
+  depends_on = [aws_iam_role_policy.gateway]
+}
+
+# -----------------------------------------------------------------------------
 # AgentCore Gateway
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 resource "aws_bedrockagentcore_gateway" "main" {
   name        = "${var.stack_name_base}-gateway"
@@ -209,40 +199,36 @@ resource "aws_bedrockagentcore_gateway" "main" {
   protocol_configuration {
     mcp {
       supported_versions = ["2025-03-26"]
-      # Optional: Enable semantic search for tools
-      # search_type = "SEMANTIC"
     }
   }
 
-  # JWT authorizer with Cognito
+  # JWT authorizer with Cognito - uses machine client from auth.tf
   authorizer_type = "CUSTOM_JWT"
   authorizer_configuration {
     custom_jwt_authorizer {
       discovery_url   = local.oidc_discovery_url
-      allowed_clients = [var.machine_client_id]
+      allowed_clients = [aws_cognito_user_pool_client.machine.id]
     }
   }
 
   tags = var.tags
 
-  depends_on = [aws_iam_role_policy.gateway]
+  depends_on = [time_sleep.gateway_iam_propagation]
 }
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # AgentCore Gateway Target
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 resource "aws_bedrockagentcore_gateway_target" "sample_tool" {
   name               = "sample-tool-target"
   gateway_identifier = aws_bedrockagentcore_gateway.main.gateway_id
   description        = "Sample tool Lambda target"
 
-  # Credential provider - use gateway IAM role
   credential_provider_configuration {
     gateway_iam_role {}
   }
 
-  # Target configuration - Lambda with tool schema
   target_configuration {
     mcp {
       lambda {

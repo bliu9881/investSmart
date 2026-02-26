@@ -47,3 +47,4 @@ override.tf.json
 
 # Build artifacts
 *.zip
+**/feedback_lambda_build/
