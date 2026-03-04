@@ -11,3 +11,5 @@
 
 - Davide Merlin
 - Mingce Bi
+- Andrew Ang
+- Tesfagabir Meharizghi
