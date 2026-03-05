@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CodeBuild-based deployment script (`scripts/deploy-with-codebuild.py`) that enables deploying FAST without requiring Docker
 - [Terraform] Full Terraform infrastructure alternative to CDK (`infra-terraform/`) with modules for Amplify Hosting, Cognito, and Backend (Runtime, Gateway, Memory, Feedback API, SSM)
 - [Terraform] Support for both Docker and Zip deployment types via `deployment_type` variable
 - [Terraform] Dedicated scripts for frontend deployment (`deploy-frontend.py`, `deploy-frontend.sh`), Docker image build (`build-and-push-image.sh`), and agent testing (`test-agent.py`)
