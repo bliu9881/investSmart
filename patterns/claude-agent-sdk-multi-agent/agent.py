@@ -107,6 +107,7 @@ async def main(payload, context: RequestContext):
             mcp_servers=mcp_servers,
             model="us.anthropic.claude-opus-4-6-v1",
             allowed_tools=allowed_tools,
+            disallowed_tools=["Bash", "Write", "NotebookEdit", "Edit", "WebFetch", "Read", "Glob", "Grep", "EnterWorktree", "Skill"],
             agents=subagents,
             resume=resume_id,
             thinking={"type": "adaptive"},

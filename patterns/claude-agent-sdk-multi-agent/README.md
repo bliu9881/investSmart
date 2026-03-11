@@ -59,6 +59,39 @@ patterns/claude-agent-sdk-multi-agent/
 | `Task` | — | Spawn a subagent for focused subtasks |
 | Gateway tools | `mcp__gateway__*` | Lambda-based tools via AgentCore Gateway |
 
+## Built-in Tool Configuration
+
+The Claude Agent SDK includes built-in tools from claude-code (Bash, Read, Write, etc.). This pattern disables most of them so the agent operates exclusively through Code Interpreter and Gateway MCP tools.
+
+**Disabled built-in tools** (`disallowed_tools` in `ClaudeAgentOptions`):
+
+| Tool | Why disabled |
+|------|-------------|
+| `Bash` | Use `mcp__codeint__execute_command` instead (sandboxed Code Interpreter) |
+| `Write` | Use `mcp__codeint__write_files` instead (sandboxed Code Interpreter) |
+| `Read` | Use `mcp__codeint__read_files` instead (sandboxed Code Interpreter) |
+| `Edit` | Use Code Interpreter file operations instead |
+| `NotebookEdit` | Use Code Interpreter for notebook-style execution |
+| `WebFetch` | Not needed for this pattern |
+| `Glob` | Use Code Interpreter for file discovery |
+| `Grep` | Use Code Interpreter for content searching |
+| `EnterWorktree` | Not applicable in this deployment context |
+| `Skill` | Not applicable in this deployment context |
+
+**To re-enable a built-in tool**, remove it from the `disallowed_tools` list in the `_build_options()` function in `agent.py`:
+
+```python
+# Before: tool is disabled
+disallowed_tools=["Bash", "Write", "NotebookEdit", "Edit", "WebFetch", "Read", "Glob", "Grep", "EnterWorktree", "Skill"],
+
+# After: Bash re-enabled
+disallowed_tools=["Write", "NotebookEdit", "Edit", "WebFetch", "Read", "Glob", "Grep", "EnterWorktree", "Skill"],
+```
+
+If you also want the agent to proactively use the re-enabled tool, add it to the `allowed_tools` list and mention it in the `system_prompt`.
+
+**Note**: Subagents inherit the parent's MCP server configuration but have their own `tools` list defined in `agents/subagents.py`. The `disallowed_tools` setting on the parent does not automatically apply to subagents — update their tool lists separately if needed.
+
 ## Models
 
 - **Main agent**: `us.anthropic.claude-opus-4-6-v1`
