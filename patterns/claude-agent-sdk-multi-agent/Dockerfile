@@ -20,7 +20,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install claude-code globally
-RUN npm install -g @anthropic-ai/claude-code
+RUN npm install -g @anthropic-ai/claude-code@2.1.73
 
 # Copy pyproject.toml and shared modules for FAST installation
 COPY pyproject.toml .
