@@ -42,6 +42,9 @@ locals {
   is_docker = var.backend_deployment_type == "docker"
   is_zip    = var.backend_deployment_type == "zip"
 
+  # Pattern flags
+  is_claude_agent_sdk = contains(["claude-agent-sdk-single-agent", "claude-agent-sdk-multi-agent"], var.backend_pattern)
+
   # Project paths (for zip packaging)
   project_root = "${path.module}/../../.."
   pattern_dir  = "${local.project_root}/patterns/${var.backend_pattern}"

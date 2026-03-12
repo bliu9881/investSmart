@@ -471,16 +471,24 @@ resource "aws_bedrockagentcore_agent_runtime" "main" {
   }
 
   # Environment variables for the runtime
-  environment_variables = {
-    AWS_REGION                       = local.region
-    AWS_DEFAULT_REGION               = local.region
-    MEMORY_ID                        = aws_bedrockagentcore_memory.main.id
-    STACK_NAME                       = var.stack_name_base
-    GATEWAY_CREDENTIAL_PROVIDER_NAME = "${var.stack_name_base}-runtime-gateway-auth"
-  }
+  environment_variables = merge(
+    {
+      AWS_REGION                       = local.region
+      AWS_DEFAULT_REGION               = local.region
+      MEMORY_ID                        = aws_bedrockagentcore_memory.main.id
+      STACK_NAME                       = var.stack_name_base
+      GATEWAY_CREDENTIAL_PROVIDER_NAME = "${var.stack_name_base}-runtime-gateway-auth"
+    },
+    # claude-agent-sdk patterns require CLAUDE_CODE_USE_BEDROCK=1
+    local.is_claude_agent_sdk ? { CLAUDE_CODE_USE_BEDROCK = "1" } : {}
+  )
 
   # Force runtime replacement when agent code changes (zip or docker)
   lifecycle {
+    precondition {
+      condition     = !local.is_claude_agent_sdk || local.is_docker
+      error_message = "claude-agent-sdk patterns require Docker deployment (backend_deployment_type = \"docker\") because they need Node.js and the claude-code CLI installed at build time."
+    }
     precondition {
       condition     = var.backend_network_mode != "VPC" || (var.backend_vpc_id != null && var.backend_vpc_id != "")
       error_message = "backend_vpc_id is required when backend_network_mode is 'VPC'."
