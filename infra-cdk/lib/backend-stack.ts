@@ -17,6 +17,7 @@ import * as cr from "aws-cdk-lib/custom-resources"
 import { Construct } from "constructs"
 import { AppConfig } from "./utils/config-manager"
 import { AgentCoreRole } from "./utils/agentcore-role"
+import { DatabaseStack } from "./database-stack"
 import * as path from "path"
 import * as fs from "fs"
 
@@ -26,12 +27,14 @@ export interface BackendStackProps extends cdk.NestedStackProps {
   userPoolClientId: string
   userPoolDomain: cognito.UserPoolDomain
   frontendUrl: string
+  databaseStack: DatabaseStack
 }
 
 export class BackendStack extends cdk.NestedStack {
   public readonly userPoolId: string
   public readonly userPoolClientId: string
   public readonly userPoolDomain: cognito.UserPoolDomain
+  public readonly databaseStack: DatabaseStack
   public feedbackApiUrl: string
   public runtimeArn: string
   public memoryArn: string
@@ -49,6 +52,7 @@ export class BackendStack extends cdk.NestedStack {
     this.userPoolId = props.userPoolId
     this.userPoolClientId = props.userPoolClientId
     this.userPoolDomain = props.userPoolDomain
+    this.databaseStack = props.databaseStack
 
     // Import the Cognito resources from the other stack
     this.userPool = cognito.UserPool.fromUserPoolId(
@@ -225,9 +229,10 @@ export class BackendStack extends cdk.NestedStack {
     const networkConfiguration = this.buildNetworkConfiguration(config)
 
     // Configure JWT authorizer with Cognito
+    // Allow both the user-facing client (frontend login) and machine client (Worker Lambda M2M)
     const authorizerConfiguration = agentcore.RuntimeAuthorizerConfiguration.usingJWT(
       `https://cognito-idp.${stack.region}.amazonaws.com/${this.userPoolId}/.well-known/openid-configuration`,
-      [this.userPoolClientId]
+      [this.userPoolClientId, this.machineClient.userPoolClientId]
     )
 
     // Create AgentCore execution role
@@ -536,7 +541,7 @@ export class BackendStack extends cdk.NestedStack {
       description: "API for user feedback and future endpoints",
       defaultCorsPreflightOptions: {
         allowOrigins: [frontendUrl, "http://localhost:3000"],
-        allowMethods: ["POST", "OPTIONS"],
+        allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ["Content-Type", "Authorization"],
       },
       deployOptions: {
@@ -559,6 +564,26 @@ export class BackendStack extends cdk.NestedStack {
         ),
         accessLogFormat: apigateway.AccessLogFormat.jsonWithStandardFields(),
         tracingEnabled: true,
+      },
+    })
+
+    // Add CORS headers to API Gateway error responses (4XX, 5XX)
+    // Without this, Cognito authorizer rejections return 401 without CORS headers,
+    // and the browser reports "CORS error" instead of the actual 401.
+    api.addGatewayResponse("CorsDefault4XX", {
+      type: apigateway.ResponseType.DEFAULT_4XX,
+      responseHeaders: {
+        "Access-Control-Allow-Origin": `'${frontendUrl}'`,
+        "Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "Access-Control-Allow-Methods": "'GET,POST,PUT,DELETE,OPTIONS'",
+      },
+    })
+    api.addGatewayResponse("CorsDefault5XX", {
+      type: apigateway.ResponseType.DEFAULT_5XX,
+      responseHeaders: {
+        "Access-Control-Allow-Origin": `'${frontendUrl}'`,
+        "Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "Access-Control-Allow-Methods": "'GET,POST,PUT,DELETE,OPTIONS'",
       },
     })
 
@@ -585,6 +610,173 @@ export class BackendStack extends cdk.NestedStack {
       requestValidator: requestValidator,
     })
 
+    // ---------------------------------------------------------------
+    // Worker Lambda (background portfolio generation — no API Gateway)
+    // ---------------------------------------------------------------
+    const workerLambda = new lambda.Function(this, "WorkerLambda", {
+      functionName: `${config.stack_name_base}-worker`,
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(path.join(__dirname, "..", "lambdas", "worker")),
+      architecture: lambda.Architecture.ARM_64,
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 1024,
+      environment: {
+        JOBS_TABLE: `${config.stack_name_base}-jobs`,
+        PORTFOLIOS_TABLE: `${config.stack_name_base}-portfolios`,
+        HOLDINGS_TABLE: `${config.stack_name_base}-holdings`,
+        HEALTH_REPORTS_TABLE: `${config.stack_name_base}-health-reports`,
+        RUNTIME_ARN: this.agentRuntime.agentRuntimeArn,
+        STACK_NAME: config.stack_name_base,
+      },
+      logGroup: new logs.LogGroup(this, "WorkerLambdaLogGroup", {
+        logGroupName: `/aws/lambda/${config.stack_name_base}-worker`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    })
+
+    // Worker: DynamoDB access
+    workerLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+          "dynamodb:BatchWriteItem", "dynamodb:Query",
+        ],
+        resources: [
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${config.stack_name_base}-jobs`,
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${config.stack_name_base}-portfolios`,
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${config.stack_name_base}-holdings`,
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${config.stack_name_base}-health-reports`,
+        ],
+      })
+    )
+
+    // Worker: AgentCore invoke permission
+    // Resource needs /* suffix to cover runtime-endpoint/DEFAULT qualifier
+    workerLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["bedrock-agentcore:InvokeAgentRuntime"],
+        resources: [
+          this.agentRuntime.agentRuntimeArn,
+          `${this.agentRuntime.agentRuntimeArn}/*`,
+        ],
+      })
+    )
+
+    // Worker: SSM access for M2M client credentials (machine_client_id, cognito_provider)
+    workerLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParameter"],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/${config.stack_name_base}/*`,
+        ],
+      })
+    )
+
+    // Worker: Secrets Manager access for M2M client secret
+    workerLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:/${config.stack_name_base}/machine_client_secret*`,
+        ],
+      })
+    )
+
+    // ---------------------------------------------------------------
+    // InvestSmart CRUD API Lambda (preferences, portfolios, jobs)
+    // ---------------------------------------------------------------
+    const apiLambda = new lambda.Function(this, "InvestSmartApiLambda", {
+      functionName: `${config.stack_name_base}-api`,
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(path.join(__dirname, "..", "lambdas", "api")),
+      architecture: lambda.Architecture.ARM_64,
+      timeout: cdk.Duration.seconds(29),
+      environment: {
+        USERS_TABLE: `${config.stack_name_base}-users`,
+        PORTFOLIOS_TABLE: `${config.stack_name_base}-portfolios`,
+        HOLDINGS_TABLE: `${config.stack_name_base}-holdings`,
+        JOBS_TABLE: `${config.stack_name_base}-jobs`,
+        HEALTH_REPORTS_TABLE: `${config.stack_name_base}-health-reports`,
+        WORKER_LAMBDA_ARN: workerLambda.functionArn,
+        CORS_ALLOWED_ORIGINS: `${frontendUrl},http://localhost:3000`,
+      },
+      logGroup: new logs.LogGroup(this, "InvestSmartApiLogGroup", {
+        logGroupName: `/aws/lambda/${config.stack_name_base}-api`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    })
+
+    // API Lambda: DynamoDB access
+    apiLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:BatchWriteItem",
+        ],
+        resources: [
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${config.stack_name_base}-users`,
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${config.stack_name_base}-portfolios`,
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${config.stack_name_base}-holdings`,
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${config.stack_name_base}-jobs`,
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${config.stack_name_base}-health-reports`,
+        ],
+      })
+    )
+
+    // API Lambda: invoke Worker Lambda async
+    workerLambda.grantInvoke(apiLambda)
+
+    const apiIntegration = new apigateway.LambdaIntegration(apiLambda)
+    const authOptions = {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    }
+
+    // /api resource
+    const apiResource = api.root.addResource("api")
+
+    // /api/preferences — GET, POST
+    const preferencesResource = apiResource.addResource("preferences")
+    preferencesResource.addMethod("GET", apiIntegration, authOptions)
+    preferencesResource.addMethod("POST", apiIntegration, authOptions)
+
+    // /api/portfolios — GET, POST
+    const portfoliosResource = apiResource.addResource("portfolios")
+    portfoliosResource.addMethod("GET", apiIntegration, authOptions)
+    portfoliosResource.addMethod("POST", apiIntegration, authOptions)
+
+    // /api/portfolios/generate — POST (async, returns jobId)
+    const generateResource = portfoliosResource.addResource("generate")
+    generateResource.addMethod("POST", apiIntegration, authOptions)
+
+    // /api/portfolios/analyze — POST (async health analysis, returns jobId)
+    const analyzeResource = portfoliosResource.addResource("analyze")
+    analyzeResource.addMethod("POST", apiIntegration, authOptions)
+
+    // /api/portfolios/{id} — GET, PUT, DELETE
+    const portfolioByIdResource = portfoliosResource.addResource("{id}")
+    portfolioByIdResource.addMethod("GET", apiIntegration, authOptions)
+    portfolioByIdResource.addMethod("PUT", apiIntegration, authOptions)
+    portfolioByIdResource.addMethod("DELETE", apiIntegration, authOptions)
+
+    // /api/portfolios/{id}/health — GET (fetch health report)
+    const healthResource = portfolioByIdResource.addResource("health")
+    healthResource.addMethod("GET", apiIntegration, authOptions)
+
+    // /api/portfolios/{id}/rebalance — POST (accept rebalancing suggestion)
+    const rebalanceResource = portfolioByIdResource.addResource("rebalance")
+    const acceptResource = rebalanceResource.addResource("accept")
+    acceptResource.addMethod("POST", apiIntegration, authOptions)
+
+    // /api/jobs/{jobId} — GET (poll for job status)
+    const jobsResource = apiResource.addResource("jobs")
+    const jobByIdResource = jobsResource.addResource("{jobId}")
+    jobByIdResource.addMethod("GET", apiIntegration, authOptions)
+
     // Store the API URL for access from main stack
     this.feedbackApiUrl = api.url
 
@@ -610,14 +802,139 @@ export class BackendStack extends cdk.NestedStack {
       }),
     })
 
+    // Stock Data Tool Lambda (PythonFunction bundles yfinance from requirements.txt)
+    const stockDataLambda = new PythonFunction(this, "StockDataLambda", {
+      runtime: lambda.Runtime.PYTHON_3_13,
+      architecture: lambda.Architecture.ARM_64,
+      entry: path.join(__dirname, "../../gateway/tools/stock_data"),
+      handler: "handler",
+      index: "stock_data_lambda.py",
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
+      logGroup: new logs.LogGroup(this, "StockDataLogGroup", {
+        logGroupName: `/aws/lambda/${config.stack_name_base}-stock-data`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    })
+
+    // Financial Data Tool Lambda
+    const financialDataLambda = new PythonFunction(this, "FinancialDataLambda", {
+      runtime: lambda.Runtime.PYTHON_3_13,
+      architecture: lambda.Architecture.ARM_64,
+      entry: path.join(__dirname, "../../gateway/tools/financial_data"),
+      handler: "handler",
+      index: "financial_data_lambda.py",
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
+      logGroup: new logs.LogGroup(this, "FinancialDataLogGroup", {
+        logGroupName: `/aws/lambda/${config.stack_name_base}-financial-data`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    })
+
+    // News & Sentiment Tool Lambda
+    const newsSentimentLambda = new PythonFunction(this, "NewsSentimentLambda", {
+      runtime: lambda.Runtime.PYTHON_3_13,
+      architecture: lambda.Architecture.ARM_64,
+      entry: path.join(__dirname, "../../gateway/tools/news_sentiment"),
+      handler: "handler",
+      index: "news_sentiment_lambda.py",
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
+      logGroup: new logs.LogGroup(this, "NewsSentimentLogGroup", {
+        logGroupName: `/aws/lambda/${config.stack_name_base}-news-sentiment`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    })
+
+    // Analyst Data Tool Lambda
+    const analystDataLambda = new PythonFunction(this, "AnalystDataLambda", {
+      runtime: lambda.Runtime.PYTHON_3_13,
+      architecture: lambda.Architecture.ARM_64,
+      entry: path.join(__dirname, "../../gateway/tools/analyst_data"),
+      handler: "handler",
+      index: "analyst_data_lambda.py",
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 512,
+      logGroup: new logs.LogGroup(this, "AnalystDataLogGroup", {
+        logGroupName: `/aws/lambda/${config.stack_name_base}-analyst-data`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    })
+
+    // Portfolio Data Tool Lambda (needs DynamoDB access)
+    const portfolioDataLambda = new PythonFunction(this, "PortfolioDataLambda", {
+      runtime: lambda.Runtime.PYTHON_3_13,
+      architecture: lambda.Architecture.ARM_64,
+      entry: path.join(__dirname, "../../gateway/tools/portfolio_data"),
+      handler: "handler",
+      index: "portfolio_data_lambda.py",
+      timeout: cdk.Duration.seconds(30),
+      environment: {
+        PORTFOLIOS_TABLE: `${config.stack_name_base}-portfolios`,
+        HOLDINGS_TABLE: `${config.stack_name_base}-holdings`,
+        ANALYSIS_CACHE_TABLE: `${config.stack_name_base}-analysis-cache`,
+      },
+      logGroup: new logs.LogGroup(this, "PortfolioDataLogGroup", {
+        logGroupName: `/aws/lambda/${config.stack_name_base}-portfolio-data`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    })
+
+    // Orchestrator Lambda
+    const orchestratorLambda = new PythonFunction(this, "OrchestratorLambda", {
+      runtime: lambda.Runtime.PYTHON_3_13,
+      architecture: lambda.Architecture.ARM_64,
+      entry: path.join(__dirname, "../../gateway/tools/orchestrator"),
+      handler: "handler",
+      index: "orchestrator_lambda.py",
+      timeout: cdk.Duration.minutes(1),
+      memorySize: 512,
+      environment: {
+        ANALYSIS_CACHE_TABLE: `${config.stack_name_base}-analysis-cache`,
+      },
+      logGroup: new logs.LogGroup(this, "OrchestratorLogGroup", {
+        logGroupName: `/aws/lambda/${config.stack_name_base}-orchestrator`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    })
+
+    // Grant DynamoDB access to portfolio data lambda
+    portfolioDataLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query", "dynamodb:Scan", "dynamodb:UpdateItem", "dynamodb:DeleteItem"],
+      resources: [
+        `arn:aws:dynamodb:${this.region}:${this.account}:table/${config.stack_name_base}-*`,
+      ],
+    }))
+
+    // Grant DynamoDB access to orchestrator for cache
+    orchestratorLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ["dynamodb:GetItem", "dynamodb:PutItem"],
+      resources: [
+        `arn:aws:dynamodb:${this.region}:${this.account}:table/${config.stack_name_base}-analysis-cache`,
+      ],
+    }))
+
     // Create comprehensive IAM role for gateway
     const gatewayRole = new iam.Role(this, "GatewayRole", {
       assumedBy: new iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
       description: "Role for AgentCore Gateway with comprehensive permissions",
     })
 
-    // Lambda invoke permission
+    // Lambda invoke permissions
     toolLambda.grantInvoke(gatewayRole)
+    stockDataLambda.grantInvoke(gatewayRole)
+    financialDataLambda.grantInvoke(gatewayRole)
+    newsSentimentLambda.grantInvoke(gatewayRole)
+    analystDataLambda.grantInvoke(gatewayRole)
+    portfolioDataLambda.grantInvoke(gatewayRole)
+    orchestratorLambda.grantInvoke(gatewayRole)
 
     // Bedrock permissions (region-agnostic)
     gatewayRole.addToPolicy(
@@ -808,6 +1125,140 @@ export class BackendStack extends cdk.NestedStack {
         },
       ],
     })
+
+    // Load tool specifications for new gateway targets
+    const stockDataSpec = JSON.parse(fs.readFileSync(path.join(__dirname, "../../gateway/tools/stock_data/tool_spec.json"), "utf8"))
+    const financialDataSpec = JSON.parse(fs.readFileSync(path.join(__dirname, "../../gateway/tools/financial_data/tool_spec.json"), "utf8"))
+    const newsSentimentSpec = JSON.parse(fs.readFileSync(path.join(__dirname, "../../gateway/tools/news_sentiment/tool_spec.json"), "utf8"))
+    const analystDataSpec = JSON.parse(fs.readFileSync(path.join(__dirname, "../../gateway/tools/analyst_data/tool_spec.json"), "utf8"))
+    const portfolioDataSpec = JSON.parse(fs.readFileSync(path.join(__dirname, "../../gateway/tools/portfolio_data/tool_spec.json"), "utf8"))
+    const orchestratorSpec = JSON.parse(fs.readFileSync(path.join(__dirname, "../../gateway/tools/orchestrator/tool_spec.json"), "utf8"))
+
+    // Stock Data Gateway Target
+    const stockDataTarget = new bedrockagentcore.CfnGatewayTarget(this, "StockDataTarget", {
+      gatewayIdentifier: gateway.attrGatewayIdentifier,
+      name: "stock-data-target",
+      description: "Stock data retrieval and ticker validation tools",
+      targetConfiguration: {
+        mcp: {
+          lambda: {
+            lambdaArn: stockDataLambda.functionArn,
+            toolSchema: {
+              inlinePayload: stockDataSpec,
+            },
+          },
+        },
+      },
+      credentialProviderConfigurations: [{
+        credentialProviderType: "GATEWAY_IAM_ROLE",
+      }],
+    })
+    stockDataTarget.addDependency(gateway)
+
+    // Financial Data Gateway Target
+    const financialDataTarget = new bedrockagentcore.CfnGatewayTarget(this, "FinancialDataTarget", {
+      gatewayIdentifier: gateway.attrGatewayIdentifier,
+      name: "financial-data-target",
+      description: "Fundamental financial metrics and price history tools",
+      targetConfiguration: {
+        mcp: {
+          lambda: {
+            lambdaArn: financialDataLambda.functionArn,
+            toolSchema: {
+              inlinePayload: financialDataSpec,
+            },
+          },
+        },
+      },
+      credentialProviderConfigurations: [{
+        credentialProviderType: "GATEWAY_IAM_ROLE",
+      }],
+    })
+    financialDataTarget.addDependency(gateway)
+
+    // News & Sentiment Gateway Target
+    const newsSentimentTarget = new bedrockagentcore.CfnGatewayTarget(this, "NewsSentimentTarget", {
+      gatewayIdentifier: gateway.attrGatewayIdentifier,
+      name: "news-sentiment-target",
+      description: "News retrieval and sentiment analysis tools",
+      targetConfiguration: {
+        mcp: {
+          lambda: {
+            lambdaArn: newsSentimentLambda.functionArn,
+            toolSchema: {
+              inlinePayload: newsSentimentSpec,
+            },
+          },
+        },
+      },
+      credentialProviderConfigurations: [{
+        credentialProviderType: "GATEWAY_IAM_ROLE",
+      }],
+    })
+    newsSentimentTarget.addDependency(gateway)
+
+    // Analyst Data Gateway Target
+    const analystDataTarget = new bedrockagentcore.CfnGatewayTarget(this, "AnalystDataTarget", {
+      gatewayIdentifier: gateway.attrGatewayIdentifier,
+      name: "analyst-data-target",
+      description: "Analyst recommendations and price target tools",
+      targetConfiguration: {
+        mcp: {
+          lambda: {
+            lambdaArn: analystDataLambda.functionArn,
+            toolSchema: {
+              inlinePayload: analystDataSpec,
+            },
+          },
+        },
+      },
+      credentialProviderConfigurations: [{
+        credentialProviderType: "GATEWAY_IAM_ROLE",
+      }],
+    })
+    analystDataTarget.addDependency(gateway)
+
+    // Portfolio Data Gateway Target
+    const portfolioDataTarget = new bedrockagentcore.CfnGatewayTarget(this, "PortfolioDataTarget", {
+      gatewayIdentifier: gateway.attrGatewayIdentifier,
+      name: "portfolio-data-target",
+      description: "Portfolio reading, analysis cache, and CSV parsing tools",
+      targetConfiguration: {
+        mcp: {
+          lambda: {
+            lambdaArn: portfolioDataLambda.functionArn,
+            toolSchema: {
+              inlinePayload: portfolioDataSpec,
+            },
+          },
+        },
+      },
+      credentialProviderConfigurations: [{
+        credentialProviderType: "GATEWAY_IAM_ROLE",
+      }],
+    })
+    portfolioDataTarget.addDependency(gateway)
+
+    // Orchestrator Gateway Target
+    const orchestratorTarget = new bedrockagentcore.CfnGatewayTarget(this, "OrchestratorTarget", {
+      gatewayIdentifier: gateway.attrGatewayIdentifier,
+      name: "orchestrator-target",
+      description: "Full analysis orchestration and portfolio generation tools",
+      targetConfiguration: {
+        mcp: {
+          lambda: {
+            lambdaArn: orchestratorLambda.functionArn,
+            toolSchema: {
+              inlinePayload: orchestratorSpec,
+            },
+          },
+        },
+      },
+      credentialProviderConfigurations: [{
+        credentialProviderType: "GATEWAY_IAM_ROLE",
+      }],
+    })
+    orchestratorTarget.addDependency(gateway)
 
     // Ensure proper creation order
     gatewayTarget.addDependency(gateway)

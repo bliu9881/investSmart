@@ -1,0 +1,18 @@
+[
+  {
+    "name": "get_analyst_reports",
+    "description": "Fetch analyst recommendations, consensus ratings, price targets, and recent upgrade/downgrade actions for a given stock ticker symbol.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "description": "The stock ticker symbol (e.g. AAPL, MSFT, GOOGL)."
+        }
+      },
+      "required": [
+        "ticker"
+      ]
+    }
+  }
+]

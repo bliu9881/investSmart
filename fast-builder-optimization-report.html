@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>fast-builder — Skill Description Optimization</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&family=Lora:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Lora', Georgia, serif;
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 20px;
+            background: #faf9f5;
+            color: #141413;
+        }
+        h1 { font-family: 'Poppins', sans-serif; color: #141413; }
+        .explainer {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #e8e6dc;
+            color: #b0aea5;
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }
+        .summary {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #e8e6dc;
+        }
+        .summary p { margin: 5px 0; }
+        .best { color: #788c5d; font-weight: bold; }
+        .table-container {
+            overflow-x: auto;
+            width: 100%;
+        }
+        table {
+            border-collapse: collapse;
+            background: white;
+            border: 1px solid #e8e6dc;
+            border-radius: 6px;
+            font-size: 12px;
+            min-width: 100%;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #e8e6dc;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+        th {
+            font-family: 'Poppins', sans-serif;
+            background: #141413;
+            color: #faf9f5;
+            font-weight: 500;
+        }
+        th.test-col {
+            background: #6a9bcc;
+        }
+        th.query-col { min-width: 200px; }
+        td.description {
+            font-family: monospace;
+            font-size: 11px;
+            word-wrap: break-word;
+            max-width: 400px;
+        }
+        td.result {
+            text-align: center;
+            font-size: 16px;
+            min-width: 40px;
+        }
+        td.test-result {
+            background: #f0f6fc;
+        }
+        .pass { color: #788c5d; }
+        .fail { color: #c44; }
+        .rate {
+            font-size: 9px;
+            color: #b0aea5;
+            display: block;
+        }
+        tr:hover { background: #faf9f5; }
+        .score {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 11px;
+        }
+        .score-good { background: #eef2e8; color: #788c5d; }
+        .score-ok { background: #fef3c7; color: #d97706; }
+        .score-bad { background: #fceaea; color: #c44; }
+        .train-label { color: #b0aea5; font-size: 10px; }
+        .test-label { color: #6a9bcc; font-size: 10px; font-weight: bold; }
+        .best-row { background: #f5f8f2; }
+        th.positive-col { border-bottom: 3px solid #788c5d; }
+        th.negative-col { border-bottom: 3px solid #c44; }
+        th.test-col.positive-col { border-bottom: 3px solid #788c5d; }
+        th.test-col.negative-col { border-bottom: 3px solid #c44; }
+        .legend { font-family: 'Poppins', sans-serif; display: flex; gap: 20px; margin-bottom: 10px; font-size: 13px; align-items: center; }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .legend-swatch { width: 16px; height: 16px; border-radius: 3px; display: inline-block; }
+        .swatch-positive { background: #141413; border-bottom: 3px solid #788c5d; }
+        .swatch-negative { background: #141413; border-bottom: 3px solid #c44; }
+        .swatch-test { background: #6a9bcc; }
+        .swatch-train { background: #141413; }
+    </style>
+</head>
+<body>
+    <h1>fast-builder — Skill Description Optimization</h1>
+    <div class="explainer">
+        <strong>Optimizing your skill's description.</strong> This page updates automatically as Claude tests different versions of your skill's description. Each row is an iteration — a new description attempt. The columns show test queries: green checkmarks mean the skill triggered correctly (or correctly didn't trigger), red crosses mean it got it wrong. The "Train" score shows performance on queries used to improve the description; the "Test" score shows performance on held-out queries the optimizer hasn't seen. When it's done, Claude will apply the best-performing description to your skill.
+    </div>
+
+    <div class="summary">
+        <p><strong>Original:</strong> Use this skill whenever the user wants to build a full-stack application using the AWS FAST (Fullstack AgentCore Solution Template) framework, or any project involving Amazon Bedrock AgentCore with a React frontend and Cognito authentication. This includes requests like &quot;build me an app on AgentCore&quot;, &quot;create a full-stack agent application&quot;, &quot;scaffold a project with Strands agents&quot;, &quot;I need a web app with AI agents on AWS&quot;, &quot;set up a FAST project&quot;, or any variation where the user wants a production-grade web application backed by AI agents on AWS. Also trigger when the user mentions Amplify + AgentCore, Strands + React, or references the FAST template directly. If the user has a spec, SOW, or requirements document and wants it turned into a working full-stack AgentCore app, this is the skill to use. Even if the user just says &quot;build me an AI-powered app&quot; without specifying the stack — if the context suggests AWS and agents, use this skill.</p>
+        <p class="best"><strong>Best:</strong> Use this skill whenever the user wants to build a full-stack application using the AWS FAST (Fullstack AgentCore Solution Template) framework, or any project involving Amazon Bedrock AgentCore with a React frontend and Cognito authentication. This includes requests like &quot;build me an app on AgentCore&quot;, &quot;create a full-stack agent application&quot;, &quot;scaffold a project with Strands agents&quot;, &quot;I need a web app with AI agents on AWS&quot;, &quot;set up a FAST project&quot;, or any variation where the user wants a production-grade web application backed by AI agents on AWS. Also trigger when the user mentions Amplify + AgentCore, Strands + React, or references the FAST template directly. If the user has a spec, SOW, or requirements document and wants it turned into a working full-stack AgentCore app, this is the skill to use. Even if the user just says &quot;build me an AI-powered app&quot; without specifying the stack — if the context suggests AWS and agents, use this skill.</p>
+        <p><strong>Best Score:</strong> 4/7 (test)</p>
+        <p><strong>Iterations:</strong> 5 | <strong>Train:</strong> 12 | <strong>Test:</strong> 7</p>
+    </div>
+
+    <div class="legend">
+        <span style="font-weight:600">Query columns:</span>
+        <span class="legend-item"><span class="legend-swatch swatch-positive"></span> Should trigger</span>
+        <span class="legend-item"><span class="legend-swatch swatch-negative"></span> Should NOT trigger</span>
+        <span class="legend-item"><span class="legend-swatch swatch-train"></span> Train</span>
+        <span class="legend-item"><span class="legend-swatch swatch-test"></span> Test</span>
+    </div>
+
+    <div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Iter</th>
+                <th>Train</th>
+                <th>Test</th>
+                <th class="query-col">Description</th>
+                <th class="positive-col">Can you create an AI-powered customer onboarding platform? The spec is: agents handle document verification (drivers license, utility bills) and guide users through KYC steps. Backend on AgentCore with gateway tools for OCR and identity verification APIs. React frontend with a step-by-step wizard UI. Deploy to AWS with CDK.</th>
+                <th class="positive-col">I&#x27;ve got a SOW from our client TechVentures — they want an AI-powered inventory management system. The backend should use Strands agents on AgentCore to handle natural language queries against their product database, and the frontend needs to be a React app hosted on Amplify with Cognito login. Can you scaffold the whole thing using the FAST template and deploy it to their AWS account?</th>
+                <th class="positive-col">we&#x27;re an aws consulting shop and a client wants us to POC an agent app. they described it loosely as &#x27;a smart assistant for their sales team that can pull CRM data and draft follow-up emails.&#x27; i need to scaffold this on agentcore with strands, react frontend, cognito, the usual. fast template.</th>
+                <th class="positive-col">We need to prototype a financial advisor agent for our startup FinWise. The agent should run on Bedrock AgentCore with tools for portfolio analysis and market data. React frontend with a chat interface and dashboard. We&#x27;re using AWS CDK for infra and Cognito for user management. Can you build this end-to-end?</th>
+                <th class="negative-col">Can you create a PowerPoint presentation summarizing our Q4 AWS spend? I have the cost explorer data exported as a CSV. Need about 10 slides with charts.</th>
+                <th class="negative-col">Build me a mobile app with React Native and Amplify Gen 2. User auth with Cognito, GraphQL API with AppSync, and a DynamoDB backend. No AI agents involved.</th>
+                <th class="positive-col">build me a full stack app with agentcore. i want a chatbot that helps users find restaurants nearby using a location tool. use the fast template, cognito for auth, amplify for hosting. make the UI look premium not like a generic demo</th>
+                <th class="negative-col">I need to set up a simple Lambda function that processes S3 events and writes metadata to DynamoDB. Just Python, no frontend, no agents. Can you write the CDK stack and the handler?</th>
+                <th class="negative-col">I need to set up a Bedrock Knowledge Base with an S3 data source and OpenSearch Serverless vector store. No custom agents, no frontend — just the RAG pipeline infrastructure via CDK.</th>
+                <th class="negative-col">I have a Strands agent running locally that I want to containerize and push to ECR. Can you help me write the Dockerfile and the ECS task definition? No frontend needed, it&#x27;s just an API.</th>
+                <th class="negative-col">Can you review this SOW document for misalignments? It&#x27;s a 12-week engagement for a data lake migration on AWS. I want to check if the timeline makes sense for the scope.</th>
+                <th class="negative-col">I want to build an AI app but I&#x27;m thinking of using Google Cloud — Vertex AI agents with a Flutter frontend and Firebase auth. Can you help architect this?</th>
+                <th class="test-col positive-col">I have this requirements doc (attached as requirements.pdf) for a healthcare scheduling assistant. It needs Strands agents that can look up doctor availability, book appointments, and send reminders via SNS. Frontend should be React + Vite on Amplify. Set up the whole thing from the FAST template and deploy.</th>
+                <th class="test-col positive-col">my team wants to build an internal knowledge base app. users ask questions and an AI agent retrieves answers from our confluence docs. we want it on agentcore with a nice react frontend, cognito sso, the works. can you use that aws fullstack agent template to set it up?</th>
+                <th class="test-col positive-col">I want to build a real-time trading signals app. Agent fetches market data, runs technical analysis, and pushes alerts. Needs WebSocket streaming from AgentCore to the React frontend. Amplify hosting, Cognito auth. Use the FAST framework as the starting point.</th>
+                <th class="test-col negative-col">Help me build a Slack bot using the Slack Bolt framework in Python. It should respond to slash commands and post summaries in channels. Deploy it as a Lambda function behind API Gateway.</th>
+                <th class="test-col negative-col">I need a React dashboard that displays metrics from our existing REST API. No AI agents, no Cognito — we already have auth handled. Just need the frontend components with charts using Recharts and a clean Tailwind layout.</th>
+                <th class="test-col negative-col">I want to deploy a LangChain agent on ECS Fargate with a Next.js frontend on Vercel. Postgres for persistence, Auth0 for authentication. Can you scaffold this?</th>
+                <th class="test-col negative-col">can you help me fine-tune a bedrock model using my custom dataset? i have training data in jsonl format on s3. i just need the fine-tuning job configuration, no app to build.</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr class="best-row">
+                <td>1</td>
+                <td><span class="score score-ok">22/36</span></td>
+                <td><span class="score score-ok">14/21</span></td>
+                <td class="description">Use this skill whenever the user wants to build a full-stack application using the AWS FAST (Fullstack AgentCore Solution Template) framework, or any project involving Amazon Bedrock AgentCore with a React frontend and Cognito authentication. This includes requests like &quot;build me an app on AgentCore&quot;, &quot;create a full-stack agent application&quot;, &quot;scaffold a project with Strands agents&quot;, &quot;I need a web app with AI agents on AWS&quot;, &quot;set up a FAST project&quot;, or any variation where the user wants a production-grade web application backed by AI agents on AWS. Also trigger when the user mentions Amplify + AgentCore, Strands + React, or references the FAST template directly. If the user has a spec, SOW, or requirements document and wants it turned into a working full-stack AgentCore app, this is the skill to use. Even if the user just says &quot;build me an AI-powered app&quot; without specifying the stack — if the context suggests AWS and agents, use this skill.</td>
+                <td class="result fail">✗<span class="rate">1/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">1/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">1/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+            </tr>
+            <tr class="">
+                <td>2</td>
+                <td><span class="score score-ok">22/36</span></td>
+                <td><span class="score score-ok">12/21</span></td>
+                <td class="description">Use this skill when the user wants to build, scaffold, or prototype a full-stack web application that combines AI agents with a React frontend on AWS. Key signals: mentions of AgentCore, Bedrock agents, Strands agents, FAST template, or any combination of AI/agent backend + React/web frontend + AWS infrastructure (CDK, Cognito, Amplify). Also trigger when the user provides a spec, SOW, or requirements document describing an agent-powered application to be built end-to-end on AWS. The core pattern is: user wants a deployed web app where AI agents power the backend logic — whether they say &quot;build me a chatbot app on AgentCore&quot; or describe a detailed multi-agent system with tools, authentication, and cloud deployment. If the request involves building (not just configuring or reviewing) an agent-backed full-stack app on AWS, use this skill.</td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">1/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">0/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">0/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+            </tr>
+            <tr class="">
+                <td>3</td>
+                <td><span class="score score-ok">23/36</span></td>
+                <td><span class="score score-ok">13/21</span></td>
+                <td class="description">Use this skill to build, scaffold, or prototype any full-stack web application powered by AI agents on AWS. Trigger whenever the user wants to create an app combining: AI/agent backend (AgentCore, Bedrock agents, Strands) + web frontend (React) + AWS infrastructure (CDK, Cognito, Amplify). Also trigger for the FAST template specifically. Common requests: &quot;build me a chatbot app on AgentCore,&quot; &quot;scaffold a full-stack agent app,&quot; or any spec/SOW/requirements describing an agent-powered web application to deploy on AWS. The key signal is BUILD + AGENT + FULLSTACK + AWS together. Do NOT trigger for: agent configuration only, deploying existing agents to containers, mobile apps, non-AWS clouds, reviewing documents, or Bedrock Knowledge Bases without a frontend.</td>
+                <td class="result fail">✗<span class="rate">1/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">1/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">0/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">0/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">1/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+            </tr>
+            <tr class="">
+                <td>4</td>
+                <td><span class="score score-ok">23/36</span></td>
+                <td><span class="score score-ok">13/21</span></td>
+                <td class="description">Use this skill to scaffold, build, or prototype any web application where AI agents power the backend on AWS. Invoke for ANY request that combines these elements: (1) an AI agent backend using AgentCore, Strands, or Bedrock agents, AND (2) a web frontend, especially React, AND (3) AWS deployment via CDK, Cognito, Amplify, or similar. Always invoke when the user mentions the FAST template. This covers everything from &quot;build me a chatbot on AgentCore&quot; to detailed specs/SOWs describing agent-powered platforms needing end-to-end implementation. The defining pattern: the user wants you to CREATE a new full-stack application with intelligent agents — not just configure agents, not containerize existing code, not review docs. Skip for: mobile-only apps, non-AWS clouds, Knowledge Bases without frontends, pure infrastructure tasks, or document review.</td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">1/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">1/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">0/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">0/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">1/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+            </tr>
+            <tr class="">
+                <td>5</td>
+                <td><span class="score score-ok">22/36</span></td>
+                <td><span class="score score-ok">13/21</span></td>
+                <td class="description">Invoke this skill immediately when a user asks to build, scaffold, or prototype a web application involving AI agents on AWS. Trigger on any request combining an agent backend (AgentCore, Strands, Bedrock agents) with a web frontend (React) and AWS deployment. This is the FAST (Fullstack AgentCore Solution Template) builder. Trigger examples: &quot;build me a chatbot on AgentCore&quot;, &quot;scaffold a full-stack agent app&quot;, &quot;prototype an AI-powered platform with React and CDK&quot;, or any SOW/spec describing an agent-powered web app to deploy on AWS. If the user mentions AgentCore, Strands agents, or FAST template alongside building something — use this skill. Do NOT invoke for: mobile-only apps, non-AWS clouds, containerizing existing agents, Knowledge Bases without frontends, pure infra tasks, or document review.</td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">1/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result fail">✗<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">0/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">1/3</span></td>
+                <td class="result test-result fail">✗<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+                <td class="result test-result pass">✓<span class="rate">0/3</span></td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+
+</body>
+</html>

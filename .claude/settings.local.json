@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker --version)",
+      "Bash(cdk --version)",
+      "Bash(git --version)",
+      "Bash(brew --version)"
+    ]
+  }
+}

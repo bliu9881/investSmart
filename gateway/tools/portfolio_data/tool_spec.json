@@ -1,0 +1,59 @@
+[
+  {
+    "name": "read_portfolio",
+    "description": "Read a user's investment portfolio from the database. Returns all holdings with tickers, shares, and values. Can optionally filter by a specific portfolio ID.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "string",
+          "description": "The unique identifier of the user whose portfolio to read."
+        },
+        "portfolio_id": {
+          "type": "string",
+          "description": "Optional specific portfolio ID to retrieve. If omitted, all portfolios for the user are returned."
+        }
+      },
+      "required": [
+        "user_id"
+      ]
+    }
+  },
+  {
+    "name": "read_analysis_cache",
+    "description": "Read previously cached analysis results for a stock ticker. Returns the cached data if available, otherwise indicates no cache exists.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "description": "The stock ticker symbol (e.g. AAPL, MSFT, GOOGL)."
+        },
+        "analysis_type": {
+          "type": "string",
+          "description": "The type of analysis to look up (e.g. fundamental, technical, sentiment, risk)."
+        }
+      },
+      "required": [
+        "ticker",
+        "analysis_type"
+      ]
+    }
+  },
+  {
+    "name": "parse_csv_holdings",
+    "description": "Parse a base64-encoded brokerage CSV file into structured portfolio holdings. Automatically detects common column formats from major brokerages. Returns parsed tickers, shares, prices, values, and portfolio weights.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "csv_content": {
+          "type": "string",
+          "description": "Base64-encoded CSV content from a brokerage export file."
+        }
+      },
+      "required": [
+        "csv_content"
+      ]
+    }
+  }
+]

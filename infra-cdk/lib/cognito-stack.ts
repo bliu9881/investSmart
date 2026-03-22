@@ -26,7 +26,7 @@ export class CognitoStack extends cdk.NestedStack {
 
     const userPool = new cognito.UserPool(this, "UserPool", {
       userPoolName: `${config.stack_name_base}-user-pool`,
-      selfSignUpEnabled: false,
+      selfSignUpEnabled: true,
       signInAliases: {
         email: true,
       },
@@ -49,13 +49,21 @@ export class CognitoStack extends cdk.NestedStack {
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       userInvitation: {
-        emailSubject: `Welcome to ${config.stack_name_base}!`,
+        emailSubject: "Welcome to InvestSmart!",
         emailBody: `<p>Hello {username},</p>
-<p>Welcome to ${config.stack_name_base}! Your username is <strong>{username}</strong> and your temporary password is: <strong>{####}</strong></p>
+<p>Welcome to InvestSmart - your AI-powered portfolio intelligence platform!</p>
+<p>Your username is <strong>{username}</strong> and your temporary password is: <strong>{####}</strong></p>
 <p>Please use this temporary password to log in and set your permanent password.</p>
-<p>The CloudFront URL to your application is stored as an output in the "${config.stack_name_base}" stack, and will be printed to your terminal once the deployment process completes.</p>
 <p>Thanks,</p>
-<p>Fullstack AgentCore Solution Template Team</p>`,
+<p>The InvestSmart Team</p>`,
+      },
+      userVerification: {
+        emailSubject: "Verify your InvestSmart account",
+        emailBody: `<p>Hello {username},</p>
+<p>Your verification code is: <strong>{####}</strong></p>
+<p>Thanks,</p>
+<p>The InvestSmart Team</p>`,
+        emailStyle: cognito.VerificationEmailStyle.CODE,
       },
     })
 

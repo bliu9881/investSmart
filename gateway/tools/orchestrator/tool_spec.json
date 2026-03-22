@@ -1,0 +1,68 @@
+[
+  {
+    "name": "full_analysis",
+    "description": "Run all 5 analysis agents (sentiment, fundamental, technical, news, analyst) in parallel for a stock and compute a composite score. Returns consolidated results within 30 seconds.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "description": "Stock ticker symbol (e.g., AAPL, MSFT)"
+        }
+      },
+      "required": ["ticker"]
+    }
+  },
+  {
+    "name": "single_analysis",
+    "description": "Run a single analysis dimension for a stock. Use this to retry a failed analysis.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "description": "Stock ticker symbol"
+        },
+        "analysis_type": {
+          "type": "string",
+          "description": "Type of analysis: sentiment, fundamental, technical, news, or analyst"
+        }
+      },
+      "required": ["ticker", "analysis_type"]
+    }
+  },
+  {
+    "name": "generate_portfolio",
+    "description": "Generate a diversified portfolio of stock recommendations based on user preferences.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "preferences": {
+          "type": "object",
+          "description": "User preference profile with riskTolerance, preferredSectors, favoriteStocks, investmentHorizon",
+          "properties": {
+            "riskTolerance": {
+              "type": "string",
+              "description": "Conservative, Moderate, or Aggressive"
+            },
+            "preferredSectors": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "List of preferred sector names"
+            },
+            "favoriteStocks": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "List of favorite stock tickers"
+            },
+            "investmentHorizon": {
+              "type": "string",
+              "description": "Short-term, Medium-term, or Long-term"
+            }
+          }
+        }
+      },
+      "required": ["preferences"]
+    }
+  }
+]

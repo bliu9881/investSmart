@@ -1,0 +1,55 @@
+[
+  {
+    "name": "get_fundamentals",
+    "description": "Fetch key fundamental financial metrics for a stock including P/E, P/B, D/E ratios, ROE, free cash flow yield, earnings date, revenue, and net income.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "description": "The stock ticker symbol (e.g. AAPL, MSFT, GOOGL)."
+        }
+      },
+      "required": [
+        "ticker"
+      ]
+    }
+  },
+  {
+    "name": "get_price_history",
+    "description": "Fetch historical OHLCV (Open, High, Low, Close, Volume) price data for a stock ticker over a specified time period.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "description": "The stock ticker symbol (e.g. AAPL, MSFT, GOOGL)."
+        },
+        "period": {
+          "type": "string",
+          "description": "The time period for historical data. Valid values: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max. Defaults to 1y.",
+          "default": "1y"
+        }
+      },
+      "required": [
+        "ticker"
+      ]
+    }
+  },
+  {
+    "name": "get_sector_medians",
+    "description": "Get median financial ratios (P/E, P/B, D/E, ROE) for a given market sector. Useful for comparing individual stock metrics against sector benchmarks.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sector": {
+          "type": "string",
+          "description": "The market sector name (e.g. Technology, Healthcare, Financial Services, Energy, Utilities, Consumer Cyclical, Consumer Defensive, Industrials, Real Estate, Basic Materials, Communication Services)."
+        }
+      },
+      "required": [
+        "sector"
+      ]
+    }
+  }
+]

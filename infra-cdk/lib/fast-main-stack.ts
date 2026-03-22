@@ -6,6 +6,7 @@ import { AppConfig } from "./utils/config-manager"
 import { BackendStack } from "./backend-stack"
 import { AmplifyHostingStack } from "./amplify-hosting-stack"
 import { CognitoStack } from "./cognito-stack"
+import { DatabaseStack } from "./database-stack"
 
 export interface FastAmplifyStackProps extends cdk.StackProps {
   config: AppConfig
@@ -15,6 +16,7 @@ export class FastMainStack extends cdk.Stack {
   public readonly amplifyHostingStack: AmplifyHostingStack
   public readonly backendStack: BackendStack
   public readonly cognitoStack: CognitoStack
+  public readonly databaseStack: DatabaseStack
 
   constructor(scope: Construct, id: string, props: FastAmplifyStackProps) {
     const description =
@@ -31,13 +33,19 @@ export class FastMainStack extends cdk.Stack {
       callbackUrls: ["http://localhost:3000", this.amplifyHostingStack.amplifyUrl],
     })
 
-    // Step 2: Create backend stack with the predictable Amplify URL and Cognito details
+    // Step 2: Create database stack for DynamoDB tables
+    this.databaseStack = new DatabaseStack(this, `${id}-database`, {
+      config: props.config,
+    })
+
+    // Step 3: Create backend stack with the predictable Amplify URL and Cognito details
     this.backendStack = new BackendStack(this, `${id}-backend`, {
       config: props.config,
       userPoolId: this.cognitoStack.userPoolId,
       userPoolClientId: this.cognitoStack.userPoolClientId,
       userPoolDomain: this.cognitoStack.userPoolDomain,
       frontendUrl: this.amplifyHostingStack.amplifyUrl,
+      databaseStack: this.databaseStack,
     })
 
     // Outputs

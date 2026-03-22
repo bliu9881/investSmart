@@ -1,0 +1,1 @@
+Use this skill https://github.com/Leonxlnx/taste-skill to design a high-end website about personal finnance management

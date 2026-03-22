@@ -1,0 +1,34 @@
+[
+  {
+    "name": "get_stock_data",
+    "description": "Fetch current stock market data for a given ticker symbol including price, 52-week high/low, market cap, sector, industry, dividend yield, PE ratio, and beta.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "description": "The stock ticker symbol (e.g. AAPL, MSFT, GOOGL)."
+        }
+      },
+      "required": [
+        "ticker"
+      ]
+    }
+  },
+  {
+    "name": "validate_ticker",
+    "description": "Validate whether a stock ticker symbol is valid and return the associated company name and exchange.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "description": "The stock ticker symbol to validate."
+        }
+      },
+      "required": [
+        "ticker"
+      ]
+    }
+  }
+]

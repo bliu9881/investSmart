@@ -1,0 +1,72 @@
+{
+  "skill_name": "fast-builder",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Build me a stock research platform called 'InvestSmart' using the FAST template on AgentCore. Here's what I need:\n\nBackend: A Strands agent that can fetch real-time stock data (prices, volume, market cap) from a financial API like Alpha Vantage or Yahoo Finance via a Lambda gateway tool. The agent should also have a tool that pulls recent news headlines for a given ticker from a news API. It needs to be able to analyze the data and provide buy/hold/sell recommendations with reasoning.\n\nFrontend: A stock search page where users type a ticker symbol and get a detailed analysis card with price chart, key metrics, recent news, and the agent's recommendation. Also need a watchlist page where users can save tickers they're tracking. Use Cognito for auth, single user group.\n\nMake it look like Bloomberg Terminal meets a modern SaaS product — dark theme, data-dense but clean. Deploy the whole thing.",
+      "expected_output": "PLAN.md with architecture for stock research app. Strands agent with financial data fetching tools (stock prices + news). React frontend with stock search, analysis cards with charts, watchlist page. Dark premium theme following taste-skill principles. CDK deployment with DynamoDB for watchlist persistence.",
+      "files": [],
+      "expectations": [
+        "Creates a PLAN.md before writing code",
+        "Clones the FAST template from GitHub",
+        "Creates a Strands agent with a system prompt tailored for stock analysis",
+        "Creates a gateway Lambda tool for fetching stock price/volume data",
+        "Creates a gateway Lambda tool for fetching news headlines by ticker",
+        "Frontend has a stock search page with ticker input",
+        "Frontend displays analysis results with price charts (Recharts or similar)",
+        "Frontend has a watchlist page with saved tickers",
+        "Frontend uses a dark color scheme (not default light shadcn)",
+        "Frontend follows taste-skill anti-slop rules (no generic placeholder data, no Inter font)",
+        "DynamoDB table configured for persisting user watchlists",
+        "Writes unit tests for the stock data fetching tools",
+        "Writes integration tests for the agent analysis flow",
+        "Attempts CDK deployment"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I want a portfolio management app on AgentCore using the FAST template. Call it 'PortfolioIQ'.\n\nThe agent needs these capabilities:\n1. A tool that connects to a DynamoDB table storing user portfolio holdings (ticker, shares, avg cost basis, purchase date)\n2. A Code Interpreter tool to run Python calculations — portfolio performance metrics (total return, annualized return, Sharpe ratio, max drawdown), correlation analysis between holdings, and sector allocation breakdown\n3. A tool that fetches current market prices so the agent can calculate unrealized P&L\n\nFrontend pages:\n- Portfolio overview: shows all holdings in a bento-grid layout with individual position cards showing P&L, weight, and a mini sparkline chart\n- Performance page: time-series chart of portfolio value, key metrics displayed in a clean dashboard\n- Rebalance page: user sets target allocations, agent recommends trades to rebalance\n- Add/edit holdings modal\n\nCognito auth with a single user pool. I want the UI to feel like a premium fintech product — think Wealthfront or Robinhood's cleaner moments, not a Bootstrap dashboard.",
+      "expected_output": "Full portfolio management app with Strands agent that has DynamoDB CRUD, market data fetching, and Code Interpreter for financial calculations. Premium fintech-style React frontend with portfolio overview, performance charts, rebalancing recommendations.",
+      "files": [],
+      "expectations": [
+        "Creates a PLAN.md documenting architecture and data models",
+        "Clones the FAST template",
+        "Creates a Strands agent with system prompt for portfolio management",
+        "Creates DynamoDB tool for portfolio holdings CRUD",
+        "Leverages Code Interpreter for financial calculations (Sharpe ratio, returns, etc.)",
+        "Creates a market price fetching tool",
+        "Frontend portfolio overview uses bento-grid or asymmetric layout (not equal cards)",
+        "Frontend performance page has time-series charts",
+        "Frontend rebalance page shows agent trade recommendations",
+        "Frontend uses Framer Motion for transitions and micro-interactions",
+        "Frontend avoids Inter font and uses a taste-skill approved typeface",
+        "CDK stack includes DynamoDB table for holdings",
+        "Writes unit tests for portfolio calculation tools",
+        "Writes integration tests for the CRUD + analysis flow"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Build a stock research report generator on FAST/AgentCore. Call it 'DeepDive'.\n\nThe agent should:\n- Fetch fundamental data for a stock (P/E ratio, revenue growth, EPS, debt-to-equity) via a financial data API tool\n- Fetch technical indicators (RSI, MACD, moving averages) via another tool\n- Run sentiment analysis on recent news using Code Interpreter with Python (nltk or textblob)\n- Generate a comprehensive research report combining all three analyses\n\nFrontend:\n- A search/input page where users enter a ticker and select analysis depth (quick scan vs. deep dive)\n- A report viewer page that renders the agent's research report with sections for fundamentals, technicals, and sentiment — each section should have data visualizations (gauge charts for sentiment, candlestick or line charts for technicals, bar charts for financial metrics)\n- A report history page showing past reports with filters by ticker, date, and recommendation\n- An export button to download the report as PDF\n\nSingle Cognito user pool. The frontend should look like a premium Bloomberg-style research terminal but with a modern, clean aesthetic. Not the cluttered 90s Bloomberg look — more like if Apple designed a research terminal.",
+      "expected_output": "Research report generator with Strands agent combining fundamental analysis, technical indicators, and sentiment analysis tools. React frontend with report viewer featuring multiple chart types, history with filters, and PDF export. Premium modern terminal aesthetic.",
+      "files": [],
+      "expectations": [
+        "Creates a PLAN.md before building",
+        "Clones the FAST template",
+        "Creates a Strands agent with system prompt for equity research",
+        "Creates a fundamental data fetching tool (P/E, revenue, EPS, etc.)",
+        "Creates a technical indicators tool (RSI, MACD, moving averages)",
+        "Leverages Code Interpreter for sentiment analysis with Python",
+        "Frontend search page has ticker input with analysis depth selection",
+        "Frontend report viewer has distinct sections for fundamentals, technicals, sentiment",
+        "Frontend includes data visualizations (charts/gauges) in the report",
+        "Frontend report history page has filtering capability",
+        "Frontend has PDF export functionality",
+        "Frontend uses asymmetric layouts and customized shadcn/ui (not defaults)",
+        "Frontend uses spring physics animations (Framer Motion)",
+        "Writes unit tests for fundamental and technical data tools",
+        "Writes integration tests for the full report generation flow"
+      ]
+    }
+  ]
+}

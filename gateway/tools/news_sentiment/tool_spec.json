@@ -1,0 +1,34 @@
+[
+  {
+    "name": "get_recent_news",
+    "description": "Fetch recent news articles for a given stock ticker symbol. Returns article titles, publishers, links, and publication times.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "description": "The stock ticker symbol (e.g. AAPL, MSFT, GOOGL)."
+        }
+      },
+      "required": [
+        "ticker"
+      ]
+    }
+  },
+  {
+    "name": "get_sentiment_data",
+    "description": "Analyze sentiment from recent news headlines for a stock ticker. Returns an overall sentiment score and per-article sentiment breakdown using keyword-based analysis.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "description": "The stock ticker symbol (e.g. AAPL, MSFT, GOOGL)."
+        }
+      },
+      "required": [
+        "ticker"
+      ]
+    }
+  }
+]

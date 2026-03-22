@@ -65,6 +65,7 @@ export function useAuth() {
     },
     isLoading: auth.isLoading,
     error: auth.error,
-    token: auth.user?.id_token,
+    token: auth.user?.access_token,
+    idToken: auth.user?.id_token,
   }
 }
