@@ -777,6 +777,28 @@ export class BackendStack extends cdk.NestedStack {
     const jobByIdResource = jobsResource.addResource("{jobId}")
     jobByIdResource.addMethod("GET", apiIntegration, authOptions)
 
+    // /api/market — GET (live market data, separate Lambda with yfinance)
+    const marketLambda = new PythonFunction(this, "MarketDataLambda", {
+      runtime: lambda.Runtime.PYTHON_3_13,
+      architecture: lambda.Architecture.ARM_64,
+      entry: path.join(__dirname, "..", "lambdas", "market"),
+      handler: "handler",
+      index: "index.py",
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 512,
+      environment: {
+        CORS_ALLOWED_ORIGINS: `${frontendUrl},http://localhost:3000`,
+      },
+      logGroup: new logs.LogGroup(this, "MarketDataLogGroup", {
+        logGroupName: `/aws/lambda/${config.stack_name_base}-market-data`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    })
+
+    const marketResource = apiResource.addResource("market")
+    marketResource.addMethod("GET", new apigateway.LambdaIntegration(marketLambda), authOptions)
+
     // Store the API URL for access from main stack
     this.feedbackApiUrl = api.url
 

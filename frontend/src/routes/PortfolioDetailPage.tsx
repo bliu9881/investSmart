@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -11,9 +11,13 @@ import {
   Shield,
   BarChart3,
   Check,
+  Trash2,
+  Plus,
 } from 'lucide-react'
-import { usePortfolioStore, type Recommendation } from '@/stores/portfolioStore'
+import { usePortfolioStore, type Recommendation, type Portfolio } from '@/stores/portfolioStore'
 import { useUIStore } from '@/stores/uiStore'
+import { getStockPrices, type StockPrice } from '@/services/marketService'
+import { getPortfolio } from '@/services/portfolioService'
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -174,11 +178,13 @@ function RecommendationCard({
   checked,
   onToggleCheck,
   onRemove,
+  stockPrice,
 }: {
   rec: Recommendation
   checked: boolean
   onToggleCheck: () => void
   onRemove: () => void
+  stockPrice?: StockPrice
 }) {
   const navigate = useNavigate()
 
@@ -216,12 +222,28 @@ function RecommendationCard({
               {rec.ticker}
             </span>
             <span className="text-sm font-semibold text-zinc-950 truncate">
-              {rec.companyName}
+              {stockPrice?.name || rec.companyName || rec.ticker}
             </span>
-            <span className="text-[10px] font-medium text-zinc-500 bg-zinc-100 rounded-full px-2 py-0.5">
-              {rec.sector}
-            </span>
+            {(stockPrice?.sector || rec.sector) && (
+              <span className="text-[10px] font-medium text-zinc-500 bg-zinc-100 rounded-full px-2 py-0.5">
+                {stockPrice?.sector || rec.sector}
+              </span>
+            )}
           </div>
+
+          {/* Live price */}
+          {stockPrice && (
+            <div className="flex items-center gap-3 mt-2">
+              <span className="text-sm font-semibold text-zinc-950">
+                ${stockPrice.price.toFixed(2)}
+              </span>
+              <span className={`text-xs font-medium ${
+                stockPrice.changePct >= 0 ? 'text-emerald-600' : 'text-rose-500'
+              }`}>
+                {stockPrice.changePct >= 0 ? '+' : ''}{stockPrice.changePct.toFixed(2)}%
+              </span>
+            </div>
+          )}
 
           {/* Allocation bar */}
           <div className="mt-3 flex items-center gap-3">
@@ -308,19 +330,52 @@ function PortfolioNotFound() {
 export default function PortfolioDetailPage() {
   const { portfolioId } = useParams<{ portfolioId: string }>()
   const navigate = useNavigate()
-  const { portfolios, updatePortfolio, setGenerating } = usePortfolioStore()
+  const { portfolios, updatePortfolio, setGenerating, deleteFromServer } = usePortfolioStore()
   const { addComparisonTicker, clearComparisonTickers } = useUIStore()
 
-  const portfolio = useMemo(
+  const storePortfolio = useMemo(
     () => portfolios.find((p) => p.id === portfolioId) ?? null,
     [portfolios, portfolioId]
   )
 
+  const [serverPortfolio, setServerPortfolio] = useState<Portfolio | null>(null)
+  const [isLoading, setIsLoading] = useState(!storePortfolio)
+  const portfolio = storePortfolio || serverPortfolio
+
+  // Fetch from server if not in store
+  useEffect(() => {
+    if (storePortfolio || !portfolioId) return
+    setIsLoading(true)
+    getPortfolio(portfolioId)
+      .then((p) => {
+        if (p) {
+          setServerPortfolio(p)
+          setRecommendations(p.recommendations ?? [])
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsLoading(false))
+  }, [storePortfolio, portfolioId])
+
   const [recommendations, setRecommendations] = useState<Recommendation[]>(
-    () => portfolio?.recommendations ?? []
+    () => storePortfolio?.recommendations ?? []
   )
   const [checkedTickers, setCheckedTickers] = useState<Set<string>>(new Set())
-  const [isLoading] = useState(false)
+  const [newTicker, setNewTicker] = useState('')
+  const [stockPrices, setStockPrices] = useState<Record<string, StockPrice>>({})
+  const fetchRef = useRef(0)
+
+  // Fetch live prices when recommendations change
+  useEffect(() => {
+    const tickers = recommendations.map((r) => r.ticker).filter(Boolean)
+    if (tickers.length === 0) return
+    const id = ++fetchRef.current
+    const timer = setTimeout(async () => {
+      const prices = await getStockPrices(tickers)
+      if (fetchRef.current === id) setStockPrices(prices)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [recommendations])
 
   // Sector allocation map
   const sectorMap = useMemo(() => {
@@ -379,6 +434,28 @@ export default function PortfolioDetailPage() {
     })
   }, [])
 
+  const handleAddTicker = useCallback(() => {
+    const ticker = newTicker.trim().toUpperCase()
+    if (!ticker || !/^[A-Z]{1,5}$/.test(ticker)) return
+    if (recommendations.find((r) => r.ticker === ticker)) return
+
+    const newRec: Recommendation = {
+      ticker,
+      companyName: '',
+      allocationPct: 0,
+      sector: '',
+      rationale: 'Manually added',
+    }
+    const all = [...recommendations, newRec]
+    const evenPct = Math.floor(100 / all.length)
+    const redistributed = all.map((r, i) => ({
+      ...r,
+      allocationPct: i === 0 ? evenPct + (100 - evenPct * all.length) : evenPct,
+    }))
+    setRecommendations(redistributed)
+    setNewTicker('')
+  }, [newTicker, recommendations])
+
   const handleCompare = useCallback(() => {
     clearComparisonTickers()
     checkedTickers.forEach((t) => addComparisonTicker(t))
@@ -394,6 +471,13 @@ export default function PortfolioDetailPage() {
     setGenerating(true)
     navigate('/build')
   }, [setGenerating, navigate])
+
+  const handleDelete = useCallback(async () => {
+    if (!portfolioId) return
+    if (!window.confirm('Delete this portfolio? This cannot be undone.')) return
+    await deleteFromServer(portfolioId)
+    navigate('/')
+  }, [portfolioId, deleteFromServer, navigate])
 
   if (isLoading) return <SkeletonState />
   if (!portfolio) return <PortfolioNotFound />
@@ -445,6 +529,12 @@ export default function PortfolioDetailPage() {
 
           <div className="flex items-center gap-3">
             <button
+              onClick={handleDelete}
+              className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" /> Delete
+            </button>
+            <button
               onClick={handleRegenerate}
               className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 transition-colors"
             >
@@ -481,6 +571,25 @@ export default function PortfolioDetailPage() {
             )}
           </div>
 
+          {/* Add stock input */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newTicker}
+              onChange={(e) => setNewTicker(e.target.value.toUpperCase().slice(0, 5))}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddTicker()}
+              placeholder="Add ticker (e.g. AAPL)"
+              className="flex-1 rounded-xl border border-zinc-200 px-4 py-2.5 text-sm text-zinc-950 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
+            />
+            <button
+              onClick={handleAddTicker}
+              disabled={!newTicker.trim()}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Plus className="h-4 w-4" /> Add
+            </button>
+          </div>
+
           {recommendations.length === 0 && (
             <div className={`${CARD} text-center py-12`}>
               <div className="h-16 w-16 mx-auto rounded-full bg-zinc-50 flex items-center justify-center mb-4">
@@ -509,6 +618,7 @@ export default function PortfolioDetailPage() {
                   checked={checkedTickers.has(rec.ticker)}
                   onToggleCheck={() => handleToggleCheck(rec.ticker)}
                   onRemove={() => handleRemove(rec.ticker)}
+                  stockPrice={stockPrices[rec.ticker]}
                 />
               ))}
             </AnimatePresence>

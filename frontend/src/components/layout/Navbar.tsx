@@ -1,19 +1,61 @@
-import { Link, useNavigate } from "react-router-dom"
-import { motion } from "framer-motion"
+import { useState, useEffect, useRef } from "react"
+import { Link, useNavigate, useLocation } from "react-router-dom"
+import { motion, AnimatePresence } from "framer-motion"
 import { useUIStore } from "@/stores/uiStore"
 import { useAuth } from "@/hooks/useAuth"
-import { Settings, MessageCircle, TrendingUp, LogOut } from "lucide-react"
+import {
+  Settings,
+  MessageCircle,
+  TrendingUp,
+  LogOut,
+  Home,
+  ChevronDown,
+  Sparkles,
+  Search,
+} from "lucide-react"
 
 export default function Navbar() {
-  const { activeFlow, setActiveFlow, toggleChat, chatOpen } = useUIStore()
+  const { toggleChat, chatOpen } = useUIStore()
   const { signOut } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
-  const handleFlowChange = (flow: "build" | "analyze") => {
-    setActiveFlow(flow)
-    if (flow === "build") navigate("/build")
-    else navigate("/analyze")
-  }
+  const isHome = location.pathname === "/"
+  const isPortfolioRoute =
+    location.pathname.startsWith("/build") || location.pathname.startsWith("/analyze")
+
+  // Dropdown state
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    if (dropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside)
+      return () => document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [dropdownOpen])
+
+  // Close on Escape
+  useEffect(() => {
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") setDropdownOpen(false)
+    }
+    if (dropdownOpen) {
+      document.addEventListener("keydown", handleEsc)
+      return () => document.removeEventListener("keydown", handleEsc)
+    }
+  }, [dropdownOpen])
+
+  // Close dropdown on route change
+  useEffect(() => {
+    setDropdownOpen(false)
+  }, [location.pathname])
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 h-16 bg-white/80 backdrop-blur-xl border-b border-zinc-200/50">
@@ -28,30 +70,105 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Flow Toggle - centered, hidden on mobile */}
+        {/* Navigation - centered, hidden on mobile */}
         <div className="hidden md:flex items-center bg-zinc-100 rounded-full p-1">
-          {(["build", "analyze"] as const).map((flow) => (
+          {/* Home */}
+          <button
+            onClick={() => navigate("/")}
+            className="relative px-5 py-1.5 text-sm font-medium transition-colors duration-200 rounded-full"
+          >
+            {isHome && (
+              <motion.div
+                layoutId="nav-indicator"
+                className="absolute inset-0 bg-white rounded-full shadow-sm"
+                transition={{ type: "spring" as const, stiffness: 300, damping: 30 }}
+              />
+            )}
+            <span
+              className={`relative z-10 flex items-center gap-1.5 ${
+                isHome ? "text-zinc-950" : "text-zinc-500"
+              }`}
+            >
+              <Home className="w-3.5 h-3.5" />
+              Home
+            </span>
+          </button>
+
+          {/* Portfolio dropdown */}
+          <div ref={dropdownRef} className="relative">
             <button
-              key={flow}
-              onClick={() => handleFlowChange(flow)}
+              onClick={() => setDropdownOpen((prev) => !prev)}
               className="relative px-5 py-1.5 text-sm font-medium transition-colors duration-200 rounded-full"
             >
-              {activeFlow === flow && (
+              {isPortfolioRoute && (
                 <motion.div
-                  layoutId="flow-indicator"
+                  layoutId="nav-indicator"
                   className="absolute inset-0 bg-white rounded-full shadow-sm"
                   transition={{ type: "spring" as const, stiffness: 300, damping: 30 }}
                 />
               )}
               <span
-                className={`relative z-10 ${
-                  activeFlow === flow ? "text-zinc-950" : "text-zinc-500"
+                className={`relative z-10 flex items-center gap-1 ${
+                  isPortfolioRoute ? "text-zinc-950" : "text-zinc-500"
                 }`}
               >
-                {flow === "build" ? "Build New" : "Analyze Existing"}
+                Portfolio
+                <ChevronDown
+                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                    dropdownOpen ? "rotate-180" : ""
+                  }`}
+                />
               </span>
             </button>
-          ))}
+
+            <AnimatePresence>
+              {dropdownOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-56 bg-white rounded-xl shadow-lg border border-zinc-200 overflow-hidden"
+                >
+                  <button
+                    onClick={() => {
+                      navigate("/build")
+                      setDropdownOpen(false)
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-left transition-colors ${
+                      location.pathname.startsWith("/build")
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "text-zinc-700 hover:bg-zinc-50"
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4 shrink-0" />
+                    <div>
+                      <p className="font-medium">Build New</p>
+                      <p className="text-xs text-zinc-400 mt-0.5">AI-generated portfolio</p>
+                    </div>
+                  </button>
+                  <div className="border-t border-zinc-100" />
+                  <button
+                    onClick={() => {
+                      navigate("/analyze")
+                      setDropdownOpen(false)
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-left transition-colors ${
+                      location.pathname.startsWith("/analyze")
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "text-zinc-700 hover:bg-zinc-50"
+                    }`}
+                  >
+                    <Search className="w-4 h-4 shrink-0" />
+                    <div>
+                      <p className="font-medium">Analyze Existing</p>
+                      <p className="text-xs text-zinc-400 mt-0.5">Import & assess holdings</p>
+                    </div>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
 
         {/* Right side actions */}

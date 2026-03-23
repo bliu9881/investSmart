@@ -1,130 +1,48 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
-  TrendingUp,
-  PieChart,
-  BarChart3,
-  ArrowRight,
-  Plus,
+  Wallet,
   Briefcase,
-  Shield,
-  Target,
+  TrendingUp,
+  TrendingDown,
+  Sparkles,
+  Upload,
+  BarChart3,
+  MessageCircle,
+  Bot,
+  Plus,
   ChevronRight,
-  Layers,
-  Clock,
+  AlertTriangle,
+  ArrowRight,
+  Activity,
+  RefreshCw,
+  MoreVertical,
+  Trash2,
+  Eye,
 } from 'lucide-react'
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+} from 'recharts'
 import { usePortfolioStore, type Portfolio } from '@/stores/portfolioStore'
 import { useUIStore } from '@/stores/uiStore'
 import { usePreferencesStore } from '@/stores/preferencesStore'
+import { getMarketOverview, getStockPrices, type MarketData, type StockPrice } from '@/services/marketService'
 
 /* ------------------------------------------------------------------ */
-/*  Shimmer skeleton for loading states                                */
+/*  Animation variants                                                 */
 /* ------------------------------------------------------------------ */
-function ShimmerCard() {
-  return (
-    <div className="bg-white rounded-[2rem] shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] border border-zinc-200/50 p-8 space-y-4 animate-pulse">
-      <div className="h-5 w-2/3 rounded-lg bg-zinc-100" />
-      <div className="h-4 w-1/2 rounded-lg bg-zinc-100" />
-      <div className="flex gap-2 mt-4">
-        <div className="h-8 w-16 rounded-full bg-zinc-100" />
-        <div className="h-8 w-16 rounded-full bg-zinc-100" />
-        <div className="h-8 w-20 rounded-full bg-zinc-100" />
-      </div>
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Mini donut chart (SVG) for sector breakdown                        */
-/* ------------------------------------------------------------------ */
-function MiniDonut({ sectors }: { sectors: Record<string, number> }) {
-  const entries = Object.entries(sectors)
-  if (entries.length === 0) return null
-
-  const colors = [
-    '#059669', '#0d9488', '#6366f1', '#f59e0b', '#ef4444',
-    '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b',
-    '#06b6d4',
-  ]
-
-  const total = entries.reduce((s, [, v]) => s + v, 0)
-  let cumulative = 0
-
-  return (
-    <svg width="40" height="40" viewBox="0 0 36 36" className="shrink-0">
-      {entries.map(([sector, value], i) => {
-        const pct = (value / total) * 100
-        const offset = 100 - cumulative
-        cumulative += pct
-        return (
-          <circle
-            key={sector}
-            cx="18"
-            cy="18"
-            r="14"
-            fill="none"
-            stroke={colors[i % colors.length]}
-            strokeWidth="4"
-            strokeDasharray={`${pct} ${100 - pct}`}
-            strokeDashoffset={offset}
-            className="transition-all"
-          />
-        )
-      })}
-    </svg>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Score badge                                                        */
-/* ------------------------------------------------------------------ */
-function ScoreBadge({ score }: { score: number }) {
-  const color =
-    score >= 80
-      ? 'bg-emerald-50 text-emerald-700'
-      : score >= 60
-        ? 'bg-amber-50 text-amber-700'
-        : 'bg-red-50 text-red-700'
-
-  return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${color}`}>
-      {score.toFixed(0)}
-    </span>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Diversification gauge                                              */
-/* ------------------------------------------------------------------ */
-function DiversificationGauge({ score }: { score: number }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 flex-1 max-w-[80px] rounded-full bg-zinc-100 overflow-hidden">
-        <motion.div
-          className="h-full rounded-full bg-emerald-500"
-          initial={{ width: 0 }}
-          animate={{ width: `${score}%` }}
-          transition={{ type: 'spring', stiffness: 80, damping: 20 }}
-        />
-      </div>
-      <span className="text-xs font-medium text-zinc-500">{score}%</span>
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Card animation variants                                            */
-/* ------------------------------------------------------------------ */
-const containerVariants = {
+const staggerContainer = {
   hidden: {},
-  show: {
-    transition: { staggerChildren: 0.1 },
-  },
+  show: { transition: { staggerChildren: 0.08 } },
 }
 
-const cardVariants = {
-  hidden: { opacity: 0, y: 24 },
+const fadeUp = {
+  hidden: { opacity: 0, y: 28 },
   show: {
     opacity: 1,
     y: 0,
@@ -133,289 +51,75 @@ const cardVariants = {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Build flow – Generated portfolio card                              */
+/*  Constants                                                          */
 /* ------------------------------------------------------------------ */
-function GeneratedPortfolioCard({ portfolio }: { portfolio: Portfolio }) {
-  const navigate = useNavigate()
-  const recs = portfolio.recommendations ?? []
-  const sectorMap = recs.reduce<Record<string, number>>((acc, r) => {
-    acc[r.sector] = (acc[r.sector] ?? 0) + r.allocationPct
-    return acc
-  }, {})
-  const avgScore =
-    recs.length > 0
-      ? recs.reduce((s, r) => s + (r.compositeScore ?? 0), 0) / recs.length
-      : 0
+const CARD =
+  'bg-white rounded-[2rem] shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] border border-zinc-200/50'
 
-  return (
-    <motion.button
-      variants={cardVariants}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={() => navigate(`/build/${portfolio.id}`)}
-      className="bg-white rounded-[2rem] shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] border border-zinc-200/50 p-8 text-left w-full transition-shadow hover:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.1)]"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h3 className="text-lg font-semibold text-zinc-950 truncate">{portfolio.name}</h3>
-          <p className="text-sm text-zinc-500 mt-1">
-            {recs.length} stock{recs.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <MiniDonut sectors={sectorMap} />
-      </div>
-
-      <div className="flex items-center gap-3 mt-5 flex-wrap">
-        {avgScore > 0 && (
-          <div className="flex items-center gap-1.5">
-            <Target className="h-3.5 w-3.5 text-zinc-400" />
-            <span className="text-xs text-zinc-500">Score</span>
-            <ScoreBadge score={avgScore} />
-          </div>
-        )}
-        <span className="text-xs text-zinc-400">
-          {new Date(portfolio.createdAt).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-          })}
-        </span>
-      </div>
-    </motion.button>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Analyze flow – Imported portfolio card                             */
-/* ------------------------------------------------------------------ */
-function ImportedPortfolioCard({ portfolio }: { portfolio: Portfolio }) {
-  const navigate = useNavigate()
-  const holdings = portfolio.holdings ?? []
-  const sectors = holdings.reduce<Set<string>>((s, h) => {
-    if (h.sector) s.add(h.sector)
-    return s
-  }, new Set())
-  const diversificationScore = Math.min(100, Math.round((sectors.size / 11) * 100))
-
-  return (
-    <motion.button
-      variants={cardVariants}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={() => navigate(`/analyze/${portfolio.id}`)}
-      className="bg-white rounded-[2rem] shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] border border-zinc-200/50 p-8 text-left w-full transition-shadow hover:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.1)]"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h3 className="text-lg font-semibold text-zinc-950 truncate">{portfolio.name}</h3>
-          <p className="text-sm text-zinc-500 mt-1">
-            {holdings.length} holding{holdings.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <div className="shrink-0 h-10 w-10 rounded-full bg-emerald-50 flex items-center justify-center">
-          <Briefcase className="h-5 w-5 text-emerald-600" />
-        </div>
-      </div>
-
-      <div className="mt-5 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-zinc-500">Diversification</span>
-        </div>
-        <DiversificationGauge score={diversificationScore} />
-      </div>
-
-      <div className="flex gap-1.5 mt-4 flex-wrap">
-        {Array.from(sectors)
-          .slice(0, 3)
-          .map((s) => (
-            <span
-              key={s}
-              className="text-[10px] font-medium text-zinc-500 bg-zinc-50 rounded-full px-2 py-0.5"
-            >
-              {s}
-            </span>
-          ))}
-        {sectors.size > 3 && (
-          <span className="text-[10px] font-medium text-zinc-400">+{sectors.size - 3}</span>
-        )}
-      </div>
-    </motion.button>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Empty state                                                        */
-/* ------------------------------------------------------------------ */
-function EmptyState({
-  flow,
-  onAction,
-}: {
-  flow: 'build' | 'analyze'
-  onAction: () => void
-}) {
-  return (
-    <motion.div
-      variants={cardVariants}
-      className="bg-white rounded-[2rem] shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] border border-zinc-200/50 p-12 flex flex-col items-center text-center"
-    >
-      <div className="h-20 w-20 rounded-full bg-zinc-50 flex items-center justify-center mb-6">
-        {flow === 'build' ? (
-          <Layers className="h-9 w-9 text-zinc-300" />
-        ) : (
-          <Briefcase className="h-9 w-9 text-zinc-300" />
-        )}
-      </div>
-      <h3 className="text-lg font-semibold text-zinc-950">
-        {flow === 'build' ? 'Create your first portfolio' : 'Import your first portfolio'}
-      </h3>
-      <p className="text-sm text-zinc-500 mt-2 max-w-xs">
-        {flow === 'build'
-          ? 'Set your investment preferences and let AI generate a tailored portfolio for you.'
-          : 'Import your existing brokerage portfolio to get health analysis and improvement suggestions.'}
-      </p>
-      <button
-        onClick={onAction}
-        className="mt-8 inline-flex items-center gap-2 rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-md hover:bg-emerald-700 transition-colors"
-      >
-        {flow === 'build' ? (
-          <>
-            <Plus className="h-4 w-4" /> Generate Portfolio
-          </>
-        ) : (
-          <>
-            <Plus className="h-4 w-4" /> Import Portfolio
-          </>
-        )}
-      </button>
-    </motion.div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  CTA card (generate / import)                                       */
-/* ------------------------------------------------------------------ */
-function CTACard({ flow, onClick }: { flow: 'build' | 'analyze'; onClick: () => void }) {
-  return (
-    <motion.button
-      variants={cardVariants}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={onClick}
-      className="w-full rounded-[2rem] p-[2px] bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)]"
-    >
-      <div className="bg-white rounded-[calc(2rem-2px)] p-8 flex items-center gap-4">
-        <div className="h-12 w-12 rounded-2xl bg-emerald-50 flex items-center justify-center shrink-0">
-          <Plus className="h-5 w-5 text-emerald-600" />
-        </div>
-        <div className="text-left min-w-0">
-          <span className="text-sm font-semibold text-zinc-950">
-            {flow === 'build' ? 'Generate New Portfolio' : 'Import Portfolio'}
-          </span>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            {flow === 'build'
-              ? 'AI-powered portfolio based on your preferences'
-              : 'Connect or upload your brokerage data'}
-          </p>
-        </div>
-        <ArrowRight className="h-5 w-5 text-emerald-600 shrink-0 ml-auto" />
-      </div>
-    </motion.button>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Quick actions                                                      */
-/* ------------------------------------------------------------------ */
-const quickActions = [
-  { label: 'Compare Stocks', icon: BarChart3, href: '/compare' },
-  { label: 'Edit Preferences', icon: Target, href: '/preferences' },
-  { label: 'Portfolio Health', icon: Shield, href: '/analyze' },
-  { label: 'Stock Analysis', icon: TrendingUp, href: '/stocks/AAPL' },
+const SECTOR_COLORS = [
+  '#059669', // emerald
+  '#2563eb', // blue
+  '#f59e0b', // amber
+  '#9333ea', // purple
+  '#f43f5e', // rose
+  '#06b6d4', // cyan
+  '#f97316', // orange
+  '#ec4899', // pink
+  '#6366f1', // indigo
+  '#14b8a6', // teal
 ]
 
-function QuickActionsCard() {
+/* ------------------------------------------------------------------ */
+/*  Shimmer skeleton                                                   */
+/* ------------------------------------------------------------------ */
+function Shimmer({ className = '' }: { className?: string }) {
   return (
-    <motion.div
-      variants={cardVariants}
-      className="bg-white rounded-[2rem] shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] border border-zinc-200/50 p-8"
-    >
-      <h2 className="text-sm font-semibold text-zinc-950 uppercase tracking-wider mb-5">
-        Quick Actions
-      </h2>
-      <div className="space-y-1">
-        {quickActions.map((action) => (
-          <Link
-            key={action.label}
-            to={action.href}
-            className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors group"
-          >
-            <action.icon className="h-4 w-4 text-zinc-400 group-hover:text-emerald-600 transition-colors" />
-            <span className="flex-1">{action.label}</span>
-            <ChevronRight className="h-4 w-4 text-zinc-300 group-hover:text-zinc-500 transition-colors" />
-          </Link>
-        ))}
-      </div>
-    </motion.div>
+    <div
+      className={`rounded-lg bg-zinc-100 animate-pulse ${className}`}
+    />
   )
 }
 
-/* ------------------------------------------------------------------ */
-/*  Recent activity placeholder                                        */
-/* ------------------------------------------------------------------ */
-function RecentActivityCard() {
+function ShimmerCard() {
   return (
-    <motion.div
-      variants={cardVariants}
-      className="bg-white rounded-[2rem] shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] border border-zinc-200/50 p-8"
-    >
-      <h2 className="text-sm font-semibold text-zinc-950 uppercase tracking-wider mb-5">
-        Recent Activity
-      </h2>
-      <div className="space-y-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-full bg-zinc-50 flex items-center justify-center">
-              <Clock className="h-3.5 w-3.5 text-zinc-300" />
-            </div>
-            <div className="flex-1 space-y-1">
-              <div className="h-3 w-3/4 rounded bg-zinc-50" />
-              <div className="h-2.5 w-1/2 rounded bg-zinc-50" />
-            </div>
-          </div>
-        ))}
-        <p className="text-xs text-zinc-400 text-center pt-2">Activity will appear here</p>
+    <div className={`${CARD} p-8 space-y-4`}>
+      <Shimmer className="h-5 w-2/3" />
+      <Shimmer className="h-4 w-1/2" />
+      <div className="flex gap-2 pt-2">
+        <Shimmer className="h-8 w-16 rounded-full" />
+        <Shimmer className="h-8 w-20 rounded-full" />
       </div>
-    </motion.div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Flow toggle                                                        */
-/* ------------------------------------------------------------------ */
-function FlowToggle() {
-  const { activeFlow, setActiveFlow } = useUIStore()
-
-  return (
-    <div className="inline-flex rounded-full bg-zinc-100 p-1">
-      {(['build', 'analyze'] as const).map((flow) => (
-        <button
-          key={flow}
-          onClick={() => setActiveFlow(flow)}
-          className={`relative rounded-full px-5 py-2 text-sm font-medium transition-colors ${
-            activeFlow === flow ? 'text-zinc-950' : 'text-zinc-500 hover:text-zinc-700'
-          }`}
-        >
-          {activeFlow === flow && (
-            <motion.div
-              layoutId="flow-toggle"
-              className="absolute inset-0 rounded-full bg-white shadow-sm"
-              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            />
-          )}
-          <span className="relative z-10 capitalize">{flow}</span>
-        </button>
-      ))}
     </div>
   )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+function formatCurrency(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`
+  return `$${n.toFixed(0)}`
+}
+
+function gainColor(gain: number): string {
+  if (gain > 0) return 'text-emerald-600 bg-emerald-50'
+  if (gain < 0) return 'text-red-600 bg-red-50'
+  return 'text-zinc-500 bg-zinc-50'
+}
+
+/* ------------------------------------------------------------------ */
+/*  Aggregated holding type                                            */
+/* ------------------------------------------------------------------ */
+interface AggregatedHolding {
+  ticker: string
+  company: string
+  sector: string
+  totalAllocation: number
+  totalQuantity: number
+  gainLoss: number // percentage
+  currentPrice?: number
+  dailyChangePct?: number
 }
 
 /* ------------------------------------------------------------------ */
@@ -423,168 +127,874 @@ function FlowToggle() {
 /* ------------------------------------------------------------------ */
 export default function DashboardPage() {
   const navigate = useNavigate()
-  const { activeFlow } = useUIStore()
-  const { portfolios } = usePortfolioStore()
+  const { portfolios, deleteFromServer } = usePortfolioStore()
+  const { setChatOpen } = useUIStore()
   const { preferences, isLoaded } = usePreferencesStore()
 
-  const filtered = useMemo(
-    () =>
-      portfolios.filter((p) =>
-        activeFlow === 'build' ? p.type === 'generated' : p.type === 'imported'
-      ),
-    [portfolios, activeFlow]
-  )
+  /* ---------- market data ---------- */
+  const [marketData, setMarketData] = useState<MarketData | null>(null)
+  const [marketLoading, setMarketLoading] = useState(false)
 
-  const totalValue = useMemo(() => {
-    return portfolios.reduce((sum, p) => {
-      const holdingsVal = (p.holdings ?? []).reduce(
-        (s, h) => s + (h.currentPrice ?? 0) * h.quantity,
-        0
-      )
-      return sum + holdingsVal
-    }, 0)
-  }, [portfolios])
+  const refreshMarket = useCallback(async () => {
+    setMarketLoading(true)
+    try {
+      const data = await getMarketOverview()
+      setMarketData(data)
+    } catch {
+      // silently fail — market data is supplementary
+    } finally {
+      setMarketLoading(false)
+    }
+  }, [])
 
+  useEffect(() => {
+    refreshMarket()
+  }, [refreshMarket])
+
+  /* ---------- time-based greeting ---------- */
   const greeting = useMemo(() => {
-    const hour = new Date().getHours()
-    if (hour < 12) return 'Good morning'
-    if (hour < 18) return 'Good afternoon'
+    const h = new Date().getHours()
+    if (h < 12) return 'Good morning'
+    if (h < 18) return 'Good afternoon'
     return 'Good evening'
   }, [])
 
-  const handleCTA = () => {
-    if (activeFlow === 'build') {
-      if (!preferences.riskTolerance && !isLoaded) {
-        navigate('/onboarding')
-      } else {
-        navigate('/build')
+  /* ---------- aggregate all holdings ---------- */
+  const allHoldings = useMemo(() => {
+    const map = new Map<string, AggregatedHolding>()
+
+    for (const p of portfolios) {
+      for (const r of p.recommendations ?? []) {
+        const existing = map.get(r.ticker)
+        if (existing) {
+          existing.totalAllocation += r.allocationPct
+        } else {
+          map.set(r.ticker, {
+            ticker: r.ticker,
+            company: r.companyName,
+            sector: r.sector,
+            totalAllocation: r.allocationPct,
+            totalQuantity: 0,
+            gainLoss: 0,
+          })
+        }
       }
+      for (const h of p.holdings ?? []) {
+        const existing = map.get(h.ticker)
+        const gl =
+          h.currentPrice && h.costBasis && h.costBasis > 0
+            ? ((h.currentPrice - h.costBasis) / h.costBasis) * 100
+            : 0
+        if (existing) {
+          existing.totalQuantity += h.quantity
+          // weighted average gain
+          if (gl !== 0) existing.gainLoss = gl
+          if (!existing.company && h.companyName) existing.company = h.companyName
+          if (!existing.sector && h.sector) existing.sector = h.sector
+        } else {
+          map.set(h.ticker, {
+            ticker: h.ticker,
+            company: h.companyName ?? h.ticker,
+            sector: h.sector ?? 'Other',
+            totalAllocation: 0,
+            totalQuantity: h.quantity,
+            gainLoss: gl,
+          })
+        }
+      }
+    }
+
+    return Array.from(map.values()).sort(
+      (a, b) => b.totalAllocation - a.totalAllocation || b.totalQuantity - a.totalQuantity,
+    )
+  }, [portfolios])
+
+  const top10 = useMemo(() => allHoldings.slice(0, 10), [allHoldings])
+
+  /* ---------- stock prices ---------- */
+  const [stockPrices, setStockPrices] = useState<Record<string, StockPrice>>({})
+
+  useEffect(() => {
+    const tickers = [...new Set(allHoldings.map((h) => h.ticker))]
+    if (tickers.length === 0) return
+    getStockPrices(tickers).then(setStockPrices)
+  }, [allHoldings])
+
+  /* ---------- sector data for chart ---------- */
+  const sectorData = useMemo(() => {
+    const sectors: Record<string, number> = {}
+    for (const h of allHoldings) {
+      const s = h.sector || 'Other'
+      sectors[s] = (sectors[s] ?? 0) + (h.totalAllocation || h.totalQuantity)
+    }
+    return Object.entries(sectors)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+  }, [allHoldings])
+
+  const concentrationWarning = useMemo(() => {
+    const total = sectorData.reduce((s, d) => s + d.value, 0)
+    if (total === 0) return null
+    const top = sectorData[0]
+    if (!top) return null
+    const pct = (top.value / total) * 100
+    return pct > 40 ? top.name : null
+  }, [sectorData])
+
+  /* ---------- summary stats ---------- */
+  const stats = useMemo(() => {
+    const totalValue = portfolios.reduce((sum, p) => {
+      const hVal = (p.holdings ?? []).reduce(
+        (s, h) => s + (h.currentPrice ?? h.costBasis ?? 0) * h.quantity,
+        0,
+      )
+      return sum + hVal
+    }, 0)
+
+    const generatedCount = portfolios.filter((p) => p.type === 'generated').length
+    const importedCount = portfolios.filter((p) => p.type === 'imported').length
+
+    let topGainer: AggregatedHolding | null = null
+    let topLoser: AggregatedHolding | null = null
+    for (const h of allHoldings) {
+      if (!topGainer || h.gainLoss > topGainer.gainLoss) topGainer = h
+      if (!topLoser || h.gainLoss < topLoser.gainLoss) topLoser = h
+    }
+
+    return {
+      totalValue,
+      portfolioCount: portfolios.length,
+      generatedCount,
+      importedCount,
+      topGainer,
+      topLoser,
+    }
+  }, [portfolios, allHoldings])
+
+  const hasPortfolios = portfolios.length > 0
+
+  /* ---------------------------------------------------------------- */
+  /*  Render                                                           */
+  /* ---------------------------------------------------------------- */
+  return (
+    <div className="min-h-[100dvh] px-4 sm:px-6 lg:px-10 py-8 lg:py-12 max-w-[1400px] mx-auto font-[Geist,system-ui,sans-serif]">
+      <motion.div
+        variants={staggerContainer}
+        initial="hidden"
+        animate="show"
+        className="space-y-8"
+      >
+        {/* ============================================================ */}
+        {/*  1. Welcome + Summary Stats                                  */}
+        {/* ============================================================ */}
+        <motion.section variants={fadeUp}>
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tighter text-zinc-950">
+            {greeting}
+          </h1>
+          <p className="mt-1.5 text-zinc-500 text-sm sm:text-base">
+            Here&rsquo;s your investor dashboard at a glance.
+          </p>
+
+          {hasPortfolios ? (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+              {/* Total Value */}
+              <div className={`${CARD} p-6`}>
+                <div className="h-10 w-10 rounded-2xl bg-emerald-50 flex items-center justify-center mb-3">
+                  <Wallet className="h-5 w-5 text-emerald-600" />
+                </div>
+                <p className="text-xs text-zinc-500 font-medium">Total Value</p>
+                <p className="text-xl font-semibold text-zinc-950 mt-0.5">
+                  {stats.totalValue > 0 ? formatCurrency(stats.totalValue) : '--'}
+                </p>
+              </div>
+
+              {/* Portfolios */}
+              <div className={`${CARD} p-6`}>
+                <div className="h-10 w-10 rounded-2xl bg-blue-50 flex items-center justify-center mb-3">
+                  <Briefcase className="h-5 w-5 text-blue-600" />
+                </div>
+                <p className="text-xs text-zinc-500 font-medium">Portfolios</p>
+                <p className="text-xl font-semibold text-zinc-950 mt-0.5">
+                  {stats.portfolioCount}
+                </p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  {stats.generatedCount} generated, {stats.importedCount} imported
+                </p>
+              </div>
+
+              {/* Top Gainer */}
+              <div className={`${CARD} p-6`}>
+                <div className="h-10 w-10 rounded-2xl bg-emerald-50 flex items-center justify-center mb-3">
+                  <TrendingUp className="h-5 w-5 text-emerald-600" />
+                </div>
+                <p className="text-xs text-zinc-500 font-medium">Top Gainer</p>
+                {stats.topGainer && stats.topGainer.gainLoss > 0 ? (
+                  <>
+                    <p className="text-xl font-semibold text-zinc-950 mt-0.5">
+                      {stats.topGainer.ticker}
+                    </p>
+                    <p className="text-[11px] text-emerald-600 font-medium mt-0.5">
+                      +{stats.topGainer.gainLoss.toFixed(1)}%
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-zinc-400 mt-1">--</p>
+                )}
+              </div>
+
+              {/* Top Loser */}
+              <div className={`${CARD} p-6`}>
+                <div className="h-10 w-10 rounded-2xl bg-red-50 flex items-center justify-center mb-3">
+                  <TrendingDown className="h-5 w-5 text-red-500" />
+                </div>
+                <p className="text-xs text-zinc-500 font-medium">Top Loser</p>
+                {stats.topLoser && stats.topLoser.gainLoss < 0 ? (
+                  <>
+                    <p className="text-xl font-semibold text-zinc-950 mt-0.5">
+                      {stats.topLoser.ticker}
+                    </p>
+                    <p className="text-[11px] text-red-600 font-medium mt-0.5">
+                      {stats.topLoser.gainLoss.toFixed(1)}%
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-zinc-400 mt-1">--</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Onboarding CTA when no portfolios */
+            <motion.div
+              variants={fadeUp}
+              className={`${CARD} p-10 mt-8 flex flex-col sm:flex-row items-center gap-6`}
+            >
+              <div className="h-16 w-16 rounded-3xl bg-emerald-50 flex items-center justify-center shrink-0">
+                <Sparkles className="h-7 w-7 text-emerald-600" />
+              </div>
+              <div className="flex-1 text-center sm:text-left">
+                <h3 className="text-lg font-semibold text-zinc-950">
+                  Build your first portfolio
+                </h3>
+                <p className="text-sm text-zinc-500 mt-1 max-w-md">
+                  Set your investment preferences and let AI generate a tailored
+                  portfolio, or import your existing holdings.
+                </p>
+              </div>
+              <button
+                onClick={() => navigate('/build')}
+                className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-md hover:bg-emerald-700 transition-colors shrink-0"
+              >
+                Get Started <ArrowRight className="h-4 w-4" />
+              </button>
+            </motion.div>
+          )}
+        </motion.section>
+
+        {/* ============================================================ */}
+        {/*  2 + 3. Holdings Overview (60%) + Sector Allocation (40%)    */}
+        {/* ============================================================ */}
+        <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-6 lg:gap-8">
+          {/* Holdings Overview */}
+          <motion.section variants={fadeUp} className={`${CARD} p-8`}>
+            <h2 className="text-sm font-semibold text-zinc-950 uppercase tracking-wider mb-6">
+              Holdings Overview
+            </h2>
+
+            {!isLoaded ? (
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Shimmer key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : top10.length === 0 ? (
+              <div className="py-12 text-center">
+                <Briefcase className="h-10 w-10 text-zinc-200 mx-auto mb-3" />
+                <p className="text-sm text-zinc-500">
+                  No holdings yet. Import or generate a portfolio to see your
+                  stocks here.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto -mx-2">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-zinc-400 font-medium">
+                        <th className="pb-3 px-2">Ticker</th>
+                        <th className="pb-3 px-2 hidden sm:table-cell">Company</th>
+                        <th className="pb-3 px-2 hidden md:table-cell">Sector</th>
+                        <th className="pb-3 px-2 text-right hidden lg:table-cell">Price</th>
+                        <th className="pb-3 px-2 text-right hidden lg:table-cell">Daily</th>
+                        <th className="pb-3 px-2 text-right">
+                          {top10.some((h) => h.totalAllocation > 0) ? 'Alloc %' : 'Qty'}
+                        </th>
+                        <th className="pb-3 px-2 text-right">G/L</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {top10.map((h) => {
+                        const sp = stockPrices[h.ticker]
+                        return (
+                        <tr
+                          key={h.ticker}
+                          className="group hover:bg-zinc-50/50 transition-colors"
+                        >
+                          <td className="py-3 px-2">
+                            <Link
+                              to={`/stocks/${h.ticker}`}
+                              className="font-semibold text-zinc-950 hover:text-emerald-600 transition-colors"
+                            >
+                              {h.ticker}
+                            </Link>
+                          </td>
+                          <td className="py-3 px-2 text-zinc-500 truncate max-w-[160px] hidden sm:table-cell">
+                            {sp?.name || h.company}
+                          </td>
+                          <td className="py-3 px-2 hidden md:table-cell">
+                            <span className="inline-block rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-medium text-zinc-600">
+                              {sp?.sector || h.sector}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2 text-right font-medium text-zinc-700 hidden lg:table-cell">
+                            {sp?.price != null ? `$${sp.price.toFixed(2)}` : '--'}
+                          </td>
+                          <td className="py-3 px-2 text-right hidden lg:table-cell">
+                            {sp?.changePct != null ? (
+                              <span className={`text-xs font-semibold ${sp.changePct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                {sp.changePct >= 0 ? '+' : ''}{sp.changePct.toFixed(2)}%
+                              </span>
+                            ) : (
+                              <span className="text-xs text-zinc-400">--</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-2 text-right font-medium text-zinc-700">
+                            {h.totalAllocation > 0
+                              ? `${h.totalAllocation.toFixed(1)}%`
+                              : h.totalQuantity}
+                          </td>
+                          <td className="py-3 px-2 text-right">
+                            <span
+                              className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${gainColor(h.gainLoss)}`}
+                            >
+                              {h.gainLoss > 0
+                                ? `+${h.gainLoss.toFixed(1)}%`
+                                : h.gainLoss < 0
+                                  ? `${h.gainLoss.toFixed(1)}%`
+                                  : '0%'}
+                            </span>
+                          </td>
+                        </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {allHoldings.length > 10 && (
+                  <div className="mt-4 text-center">
+                    <Link
+                      to="/analyze"
+                      className="text-sm font-medium text-emerald-600 hover:text-emerald-700 transition-colors inline-flex items-center gap-1"
+                    >
+                      View all {allHoldings.length} holdings
+                      <ChevronRight className="h-4 w-4" />
+                    </Link>
+                  </div>
+                )}
+              </>
+            )}
+          </motion.section>
+
+          {/* Sector Allocation */}
+          <motion.section variants={fadeUp} className={`${CARD} p-8`}>
+            <h2 className="text-sm font-semibold text-zinc-950 uppercase tracking-wider mb-6">
+              Sector Allocation
+            </h2>
+
+            {!isLoaded ? (
+              <div className="flex flex-col items-center gap-4 py-8">
+                <Shimmer className="h-48 w-48 rounded-full" />
+                <Shimmer className="h-4 w-32" />
+              </div>
+            ) : sectorData.length === 0 ? (
+              <div className="py-12 text-center">
+                <BarChart3 className="h-10 w-10 text-zinc-200 mx-auto mb-3" />
+                <p className="text-sm text-zinc-500">
+                  No sector data available yet.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="h-52">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={sectorData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={85}
+                        paddingAngle={2}
+                        dataKey="value"
+                        stroke="none"
+                      >
+                        {sectorData.map((_, i) => (
+                          <Cell
+                            key={`cell-${i}`}
+                            fill={SECTOR_COLORS[i % SECTOR_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value) => [
+                          `${Number(value).toFixed(1)}`,
+                          'Weight',
+                        ]}
+                        contentStyle={{
+                          borderRadius: '0.75rem',
+                          border: '1px solid #e4e4e7',
+                          fontSize: '0.75rem',
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Legend */}
+                <div className="flex flex-wrap gap-x-4 gap-y-2 mt-4">
+                  {sectorData.map((d, i) => {
+                    const total = sectorData.reduce((s, x) => s + x.value, 0)
+                    const pct = total > 0 ? ((d.value / total) * 100).toFixed(0) : '0'
+                    return (
+                      <div key={d.name} className="flex items-center gap-1.5">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full shrink-0"
+                          style={{
+                            backgroundColor:
+                              SECTOR_COLORS[i % SECTOR_COLORS.length],
+                          }}
+                        />
+                        <span className="text-xs text-zinc-600">
+                          {d.name} ({pct}%)
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Concentration warning */}
+                {concentrationWarning && (
+                  <div className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3">
+                    <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                    <p className="text-xs text-amber-700">
+                      <span className="font-semibold">{concentrationWarning}</span>{' '}
+                      makes up over 40% of your allocation. Consider diversifying.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </motion.section>
+        </div>
+
+        {/* ============================================================ */}
+        {/*  4. Your Portfolios (horizontal scroll)                      */}
+        {/* ============================================================ */}
+        <motion.section variants={fadeUp}>
+          <h2 className="text-sm font-semibold text-zinc-950 uppercase tracking-wider mb-5">
+            Your Portfolios
+          </h2>
+
+          {!isLoaded && portfolios.length === 0 ? (
+            <div className="flex gap-4 overflow-hidden">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="shrink-0 w-[280px]">
+                  <ShimmerCard />
+                </div>
+              ))}
+            </div>
+          ) : portfolios.length === 0 ? (
+            <div className={`${CARD} p-10 text-center`}>
+              <Briefcase className="h-10 w-10 text-zinc-200 mx-auto mb-3" />
+              <p className="text-sm text-zinc-500">
+                No portfolios yet. Create one to get started.
+              </p>
+            </div>
+          ) : (
+            <div
+              className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-zinc-200"
+              style={{ scrollSnapType: 'x mandatory' }}
+            >
+              {portfolios.map((p: Portfolio) => (
+                <PortfolioScrollCard key={p.id} portfolio={p} onDelete={(id) => deleteFromServer(id)} />
+              ))}
+
+              {/* + New Portfolio */}
+              <button
+                onClick={() => navigate('/build')}
+                className="shrink-0 w-[280px] h-[180px] rounded-[2rem] border-2 border-dashed border-zinc-200 flex flex-col items-center justify-center gap-2 text-zinc-400 hover:text-emerald-600 hover:border-emerald-300 transition-colors snap-start"
+              >
+                <Plus className="h-6 w-6" />
+                <span className="text-sm font-medium">New Portfolio</span>
+              </button>
+            </div>
+          )}
+        </motion.section>
+
+        {/* ============================================================ */}
+        {/*  5 + 6. Market Pulse (60%) + Quick Actions / Profile (40%)   */}
+        {/* ============================================================ */}
+        <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-6 lg:gap-8">
+          {/* Market Pulse */}
+          <motion.section variants={fadeUp} className={`${CARD} p-8`}>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-2xl bg-emerald-50 flex items-center justify-center">
+                  <Activity className="h-5 w-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-950 uppercase tracking-wider">
+                    Market Pulse
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    {marketData ? `Updated ${new Date(marketData.timestamp * 1000).toLocaleTimeString()}` : 'Loading...'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={refreshMarket}
+                disabled={marketLoading}
+                className="p-2 rounded-xl text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors disabled:opacity-50"
+                title="Refresh"
+              >
+                <RefreshCw className={`h-4 w-4 ${marketLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+
+            {/* Indices */}
+            {marketLoading && !marketData ? (
+              <div className="grid grid-cols-2 gap-3 mb-5">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="rounded-2xl bg-zinc-50 p-4 animate-shimmer">
+                    <div className="h-3 w-16 rounded bg-zinc-200 mb-2" />
+                    <div className="h-5 w-24 rounded bg-zinc-200" />
+                  </div>
+                ))}
+              </div>
+            ) : marketData ? (
+              <>
+                <div className="grid grid-cols-2 gap-3 mb-5">
+                  {marketData.indices.map((idx) => (
+                    <div key={idx.symbol} className="rounded-2xl bg-zinc-50 p-4">
+                      <p className="text-[11px] font-medium text-zinc-400 uppercase">{idx.name}</p>
+                      <p className="text-lg font-semibold text-zinc-950 mt-0.5">
+                        {idx.price.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </p>
+                      <p className={`text-xs font-medium mt-0.5 ${
+                        idx.direction === 'up' ? 'text-emerald-600' : idx.direction === 'down' ? 'text-rose-500' : 'text-zinc-400'
+                      }`}>
+                        {idx.direction === 'up' ? '+' : ''}{idx.changePct.toFixed(2)}%
+                        <span className="text-zinc-400 ml-1">
+                          ({idx.direction === 'up' ? '+' : ''}{idx.change.toFixed(2)})
+                        </span>
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Movers */}
+                {(marketData.gainers.length > 0 || marketData.losers.length > 0) && (
+                  <div className="grid grid-cols-2 gap-4 mb-5">
+                    {marketData.gainers.length > 0 && (
+                      <div>
+                        <p className="text-[11px] font-medium text-emerald-600 uppercase mb-2 flex items-center gap-1">
+                          <TrendingUp className="h-3 w-3" /> Top Gainers
+                        </p>
+                        {marketData.gainers.map((m) => (
+                          <Link key={m.ticker} to={`/stocks/${m.ticker}`} className="flex items-center justify-between py-1.5 no-underline group">
+                            <span className="text-xs font-medium text-zinc-700 group-hover:text-emerald-600">{m.ticker}</span>
+                            <span className="text-xs font-semibold text-emerald-600">+{m.changePct.toFixed(1)}%</span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                    {marketData.losers.length > 0 && (
+                      <div>
+                        <p className="text-[11px] font-medium text-rose-500 uppercase mb-2 flex items-center gap-1">
+                          <TrendingDown className="h-3 w-3" /> Top Losers
+                        </p>
+                        {marketData.losers.map((m) => (
+                          <Link key={m.ticker} to={`/stocks/${m.ticker}`} className="flex items-center justify-between py-1.5 no-underline group">
+                            <span className="text-xs font-medium text-zinc-700 group-hover:text-rose-500">{m.ticker}</span>
+                            <span className="text-xs font-semibold text-rose-500">{m.changePct.toFixed(1)}%</span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-zinc-400">Market data unavailable</p>
+            )}
+
+            {/* AI Chat prompt */}
+            <div className="border-t border-zinc-100 pt-4 mt-2">
+              <button
+                onClick={() => setChatOpen(true)}
+                className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-4 py-2 text-xs font-medium text-zinc-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
+              >
+                <Bot className="h-3.5 w-3.5" />
+                Ask AI about the market
+              </button>
+            </div>
+          </motion.section>
+
+          {/* Quick Actions + Profile */}
+          <motion.section variants={fadeUp} className={`${CARD} p-8`}>
+            {/* Quick Actions */}
+            <h2 className="text-sm font-semibold text-zinc-950 uppercase tracking-wider mb-5">
+              Quick Actions
+            </h2>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              {([
+                {
+                  label: 'Build Portfolio',
+                  href: '/build',
+                  icon: Sparkles,
+                  color: 'bg-emerald-50 text-emerald-600',
+                },
+                {
+                  label: 'Import Holdings',
+                  href: '/analyze/import',
+                  icon: Upload,
+                  color: 'bg-blue-50 text-blue-600',
+                },
+                {
+                  label: 'Compare Stocks',
+                  href: '/compare',
+                  icon: BarChart3,
+                  color: 'bg-amber-50 text-amber-600',
+                },
+                {
+                  label: 'AI Chat',
+                  href: null,
+                  icon: MessageCircle,
+                  color: 'bg-purple-50 text-purple-600',
+                },
+              ] as const).map((action) => (
+                <QuickActionButton
+                  key={action.label}
+                  label={action.label}
+                  href={action.href}
+                  icon={action.icon}
+                  color={action.color}
+                  onChatOpen={() => setChatOpen(true)}
+                />
+              ))}
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-zinc-100 my-6" />
+
+            {/* Profile */}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-zinc-950 uppercase tracking-wider">
+                Your Profile
+              </h2>
+              <Link
+                to="/preferences"
+                className="text-xs font-medium text-emerald-600 hover:text-emerald-700 transition-colors"
+              >
+                Edit
+              </Link>
+            </div>
+
+            {!isLoaded ? (
+              <div className="space-y-3">
+                <Shimmer className="h-6 w-24 rounded-full" />
+                <Shimmer className="h-4 w-32" />
+              </div>
+            ) : !preferences.riskTolerance ? (
+              <div className="text-center py-4">
+                <p className="text-sm text-zinc-500">
+                  No preferences set.{' '}
+                  <Link
+                    to="/preferences"
+                    className="text-emerald-600 hover:text-emerald-700 font-medium"
+                  >
+                    Set up now
+                  </Link>
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500">Risk:</span>
+                  <span className="inline-block rounded-full bg-emerald-50 text-emerald-700 px-2.5 py-0.5 text-xs font-semibold">
+                    {preferences.riskTolerance}
+                  </span>
+                </div>
+                {preferences.investmentHorizon && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-500">Horizon:</span>
+                    <span className="text-xs font-medium text-zinc-700">
+                      {preferences.investmentHorizon}
+                    </span>
+                  </div>
+                )}
+                {preferences.preferredSectors.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {preferences.preferredSectors.slice(0, 4).map((s) => (
+                      <span
+                        key={s}
+                        className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-medium text-zinc-600"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                    {preferences.preferredSectors.length > 4 && (
+                      <span className="text-[11px] text-zinc-400 self-center">
+                        +{preferences.preferredSectors.length - 4}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </motion.section>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Portfolio scroll card                                              */
+/* ------------------------------------------------------------------ */
+function PortfolioScrollCard({ portfolio, onDelete }: { portfolio: Portfolio; onDelete: (id: string) => void }) {
+  const navigate = useNavigate()
+  const recs = portfolio.recommendations ?? []
+  const holdings = portfolio.holdings ?? []
+  const count = recs.length + holdings.length
+  const isGenerated = portfolio.type === 'generated'
+  const detailPath = isGenerated ? `/build/${portfolio.id}` : `/analyze/${portfolio.id}`
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  return (
+    <motion.div
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ type: 'spring' as const, stiffness: 300, damping: 20 }}
+      className={`${CARD} p-6 shrink-0 w-[280px] h-[180px] text-left flex flex-col justify-between snap-start hover:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.1)] transition-shadow relative cursor-pointer`}
+      onClick={() => navigate(detailPath)}
+    >
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <h3 className="text-base font-semibold text-zinc-950 truncate flex-1">
+            {portfolio.name}
+          </h3>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+              isGenerated
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-blue-50 text-blue-700'
+            }`}
+          >
+            {isGenerated ? 'Generated' : 'Imported'}
+          </span>
+          <div className="relative shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenuOpen((prev) => !prev)
+              }}
+              className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+            {menuOpen && (
+              <div
+                className="absolute right-0 top-8 z-20 w-36 rounded-xl bg-white border border-zinc-200 shadow-lg py-1"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => {
+                    setMenuOpen(false)
+                    navigate(detailPath)
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors"
+                >
+                  <Eye className="h-4 w-4" /> View
+                </button>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false)
+                    if (window.confirm('Delete this portfolio? This cannot be undone.')) {
+                      onDelete(portfolio.id)
+                    }
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 className="h-4 w-4" /> Delete
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <p className="text-sm text-zinc-500">
+          {count} stock{count !== 1 ? 's' : ''}
+        </p>
+      </div>
+      <p className="text-xs text-zinc-400">
+        {new Date(portfolio.createdAt).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })}
+      </p>
+    </motion.div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Quick action button                                                */
+/* ------------------------------------------------------------------ */
+function QuickActionButton({
+  label,
+  href,
+  icon: Icon,
+  color,
+  onChatOpen,
+}: {
+  label: string
+  href: string | null
+  icon: React.ComponentType<{ className?: string }>
+  color: string
+  onChatOpen: () => void
+}) {
+  const navigate = useNavigate()
+
+  const handleClick = () => {
+    if (href) {
+      navigate(href)
     } else {
-      navigate('/analyze/import')
+      onChatOpen()
     }
   }
 
   return (
-    <div className="min-h-[100dvh] px-4 sm:px-6 lg:px-10 py-8 lg:py-12 max-w-[1400px] mx-auto">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-        className="mb-10"
+    <button
+      onClick={handleClick}
+      className="flex flex-col items-center gap-2 rounded-2xl border border-zinc-100 p-4 hover:bg-zinc-50/50 transition-colors group"
+    >
+      <div
+        className={`h-10 w-10 rounded-xl flex items-center justify-center ${color}`}
       >
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tighter text-zinc-950">
-              {greeting}
-            </h1>
-            <p className="mt-1.5 text-zinc-500 text-sm sm:text-base">
-              Here&rsquo;s an overview of your portfolio intelligence.
-            </p>
-          </div>
-          <FlowToggle />
-        </div>
-
-        {/* Quick stats row */}
-        <div className="flex flex-wrap gap-6 mt-8">
-          {[
-            {
-              label: 'Portfolios',
-              value: portfolios.length.toString(),
-              icon: PieChart,
-            },
-            {
-              label: 'Generated',
-              value: portfolios.filter((p) => p.type === 'generated').length.toString(),
-              icon: Layers,
-            },
-            {
-              label: 'Imported',
-              value: portfolios.filter((p) => p.type === 'imported').length.toString(),
-              icon: Briefcase,
-            },
-            ...(totalValue > 0
-              ? [
-                  {
-                    label: 'Total Value',
-                    value: `$${totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
-                    icon: TrendingUp,
-                  },
-                ]
-              : []),
-          ].map((stat) => (
-            <div key={stat.label} className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-zinc-50 flex items-center justify-center">
-                <stat.icon className="h-4 w-4 text-zinc-400" />
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500">{stat.label}</p>
-                <p className="text-lg font-semibold text-zinc-950 leading-tight">{stat.value}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </motion.div>
-
-      {/* Asymmetric layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-6 lg:gap-8 items-start">
-        {/* Left column – 60 % */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeFlow}
-            variants={containerVariants}
-            initial="hidden"
-            animate="show"
-            exit="hidden"
-            className="space-y-5"
-          >
-            <motion.h2
-              variants={cardVariants}
-              className="text-sm font-semibold text-zinc-950 uppercase tracking-wider"
-            >
-              {activeFlow === 'build' ? 'Generated Portfolios' : 'Imported Portfolios'}
-            </motion.h2>
-
-            {/* Loading skeleton */}
-            {!isLoaded && filtered.length === 0 && (
-              <div className="space-y-5">
-                <ShimmerCard />
-                <ShimmerCard />
-              </div>
-            )}
-
-            {/* Empty state */}
-            {isLoaded && filtered.length === 0 && (
-              <EmptyState flow={activeFlow} onAction={handleCTA} />
-            )}
-
-            {/* Portfolio cards */}
-            {filtered.length > 0 && (
-              <>
-                {filtered.map((p) =>
-                  activeFlow === 'build' ? (
-                    <GeneratedPortfolioCard key={p.id} portfolio={p} />
-                  ) : (
-                    <ImportedPortfolioCard key={p.id} portfolio={p} />
-                  )
-                )}
-                <CTACard flow={activeFlow} onClick={handleCTA} />
-              </>
-            )}
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Right column – 40 % */}
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="show"
-          className="space-y-6 lg:sticky lg:top-8"
-        >
-          <QuickActionsCard />
-          <RecentActivityCard />
-        </motion.div>
+        <Icon className="h-5 w-5" />
       </div>
-    </div>
+      <span className="text-xs font-medium text-zinc-700 group-hover:text-zinc-950 transition-colors">
+        {label}
+      </span>
+    </button>
   )
 }

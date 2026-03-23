@@ -507,13 +507,15 @@ def get_health_report(event: dict) -> dict:
     table = dynamodb.Table(HEALTH_REPORTS_TABLE)
     result = table.query(
         KeyConditionExpression=boto3.dynamodb.conditions.Key("portfolioId").eq(portfolio_id),
-        ScanIndexForward=False,  # Sort by reportId descending
-        Limit=1,
     )
     items = result.get("Items", [])
 
     if not items:
         return response(404, {"error": "No health report found"}, origin)
+
+    # Sort by createdAt descending (UUID sort keys don't give chronological order)
+    items.sort(key=lambda x: float(x.get("createdAt", 0)), reverse=True)
+    items = [items[0]]
 
     return response(200, {"report": items[0]}, origin)
 

@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react'
+import { useMemo, useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -8,10 +8,14 @@ import {
   Briefcase,
   TrendingUp,
   TrendingDown,
+  Plus,
+  X,
+  Trash2,
 } from 'lucide-react'
-import { usePortfolioStore } from '@/stores/portfolioStore'
+import { usePortfolioStore, type Holding } from '@/stores/portfolioStore'
 import { useUIStore } from '@/stores/uiStore'
-import { getPortfolio } from '@/services/portfolioService'
+import { getPortfolio, deletePortfolio } from '@/services/portfolioService'
+import { getStockPrices, type StockPrice } from '@/services/marketService'
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -62,6 +66,10 @@ export default function ImportedPortfolioPage() {
   const { portfolios, setActivePortfolio, addPortfolio } = usePortfolioStore()
   const { addComparisonTicker, clearComparisonTickers } = useUIStore()
   const [loading, setLoading] = useState(false)
+  const [stockPrices, setStockPrices] = useState<Record<string, StockPrice>>({})
+  const [newTicker, setNewTicker] = useState('')
+  const [newQty, setNewQty] = useState('')
+  const fetchRef = useRef(0)
 
   const portfolio = useMemo(
     () => portfolios.find((p) => p.id === portfolioId) ?? null,
@@ -85,6 +93,18 @@ export default function ImportedPortfolioPage() {
 
   const holdings = portfolio?.holdings ?? []
 
+  // Fetch live prices
+  useEffect(() => {
+    const tickers = holdings.map((h) => h.ticker).filter(Boolean)
+    if (tickers.length === 0) return
+    const id = ++fetchRef.current
+    const timer = setTimeout(async () => {
+      const prices = await getStockPrices(tickers)
+      if (fetchRef.current === id) setStockPrices(prices)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [holdings])
+
   const totalCost = useMemo(
     () =>
       holdings.reduce(
@@ -104,6 +124,45 @@ export default function ImportedPortfolioPage() {
   )
 
   const totalGainLoss = totalValue - totalCost
+
+  const handleAddHolding = useCallback(() => {
+    const ticker = newTicker.trim().toUpperCase()
+    const qty = parseFloat(newQty)
+    if (!ticker || !/^[A-Z]{1,5}$/.test(ticker)) return
+    if (!qty || qty <= 0) return
+    if (holdings.find((h) => h.ticker === ticker)) return
+    if (!portfolio) return
+
+    const newHolding: Holding = {
+      id: `manual-${Date.now()}`,
+      ticker,
+      quantity: qty,
+      companyName: stockPrices[ticker]?.name || '',
+      sector: stockPrices[ticker]?.sector || '',
+      currentPrice: stockPrices[ticker]?.price || 0,
+    }
+    const updated = { ...portfolio, holdings: [...holdings, newHolding] }
+    addPortfolio(updated)
+    setNewTicker('')
+    setNewQty('')
+  }, [newTicker, newQty, holdings, portfolio, addPortfolio, stockPrices])
+
+  const handleRemoveHolding = useCallback((holdingId: string) => {
+    if (!portfolio) return
+    const updated = { ...portfolio, holdings: holdings.filter((h) => h.id !== holdingId) }
+    addPortfolio(updated)
+  }, [portfolio, holdings, addPortfolio])
+
+  const handleDeletePortfolio = useCallback(async () => {
+    if (!portfolioId) return
+    if (!window.confirm('Delete this portfolio? This cannot be undone.')) return
+    try {
+      await deletePortfolio(portfolioId)
+      navigate('/')
+    } catch {
+      alert('Failed to delete portfolio')
+    }
+  }, [portfolioId, navigate])
 
   const handleCompare = () => {
     clearComparisonTickers()
@@ -164,6 +223,12 @@ export default function ImportedPortfolioPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleDeletePortfolio}
+              className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" /> Delete
+            </button>
             <button
               onClick={handleCompare}
               disabled={holdings.length < 2}
@@ -229,9 +294,35 @@ export default function ImportedPortfolioPage() {
         transition={{ type: 'spring', stiffness: 260, damping: 24, delay: 0.1 }}
         className={CARD}
       >
-        <h2 className="text-sm font-semibold text-zinc-950 uppercase tracking-wider mb-6">
+        <h2 className="text-sm font-semibold text-zinc-950 uppercase tracking-wider mb-4">
           Holdings
         </h2>
+
+        {/* Add stock input */}
+        <div className="flex items-center gap-2 mb-6">
+          <input
+            type="text"
+            value={newTicker}
+            onChange={(e) => setNewTicker(e.target.value.toUpperCase().slice(0, 5))}
+            placeholder="Ticker (e.g. AAPL)"
+            className="w-36 rounded-xl border border-zinc-200 px-3 py-2.5 text-sm text-zinc-950 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
+          />
+          <input
+            type="number"
+            value={newQty}
+            onChange={(e) => setNewQty(e.target.value)}
+            placeholder="Shares"
+            min="1"
+            className="w-24 rounded-xl border border-zinc-200 px-3 py-2.5 text-sm text-zinc-950 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
+          />
+          <button
+            onClick={handleAddHolding}
+            disabled={!newTicker.trim() || !newQty}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <Plus className="h-4 w-4" /> Add
+          </button>
+        </div>
 
         {holdings.length === 0 && (
           <div className="flex flex-col items-center text-center py-10">
@@ -262,17 +353,20 @@ export default function ImportedPortfolioPage() {
               </thead>
               <tbody>
                 {holdings.map((h) => {
+                  const livePrice = stockPrices[h.ticker]
+                  const currentPrice = livePrice?.price ?? h.currentPrice ?? 0
                   const cost = (h.costBasis ?? 0) * h.quantity
-                  const value = (h.currentPrice ?? 0) * h.quantity
+                  const value = currentPrice * h.quantity
                   const gl = value - cost
-                  const hasPrices = (h.costBasis ?? 0) > 0 && (h.currentPrice ?? 0) > 0
+                  const hasPrices = (h.costBasis ?? 0) > 0 && currentPrice > 0
+                  const companyName = livePrice?.name || h.companyName || '--'
 
                   return (
                     <motion.tr
                       key={h.id}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="border-b border-zinc-50 hover:bg-zinc-50/50 transition-colors"
+                      className="border-b border-zinc-50 hover:bg-zinc-50/50 transition-colors group"
                     >
                       <td className="px-4 py-4">
                         <Link
@@ -283,7 +377,7 @@ export default function ImportedPortfolioPage() {
                         </Link>
                       </td>
                       <td className="px-4 py-4 text-sm text-zinc-700">
-                        {h.companyName ?? '--'}
+                        {companyName}
                       </td>
                       <td className="px-4 py-4 text-sm font-medium text-zinc-950">
                         {h.quantity.toLocaleString()}
@@ -294,9 +388,18 @@ export default function ImportedPortfolioPage() {
                           : '--'}
                       </td>
                       <td className="px-4 py-4 text-sm text-zinc-700">
-                        {h.currentPrice
-                          ? `$${h.currentPrice.toFixed(2)}`
-                          : '--'}
+                        {currentPrice > 0 ? (
+                          <div>
+                            <span className="font-medium text-zinc-950">${currentPrice.toFixed(2)}</span>
+                            {livePrice && (
+                              <span className={`ml-2 text-xs font-medium ${
+                                livePrice.changePct >= 0 ? 'text-emerald-600' : 'text-rose-500'
+                              }`}>
+                                {livePrice.changePct >= 0 ? '+' : ''}{livePrice.changePct.toFixed(2)}%
+                              </span>
+                            )}
+                          </div>
+                        ) : '--'}
                       </td>
                       <td className="px-4 py-4">
                         {hasPrices ? (
@@ -316,13 +419,20 @@ export default function ImportedPortfolioPage() {
                           <span className="text-sm text-zinc-400">--</span>
                         )}
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-4 flex items-center gap-2">
                         <Link
                           to={`/stocks/${h.ticker}`}
                           className="text-xs font-medium text-emerald-600 hover:text-emerald-700"
                         >
                           Analyze
                         </Link>
+                        <button
+                          onClick={() => handleRemoveHolding(h.id)}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-zinc-400 hover:text-rose-500 hover:bg-rose-50 transition-all"
+                          title="Remove holding"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
                       </td>
                     </motion.tr>
                   )
